@@ -1,0 +1,44 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Board {
+  id        String   @id @db.VarChar(12) // nanoid public slug (URL)
+  title     String   @db.VarChar(255)
+  prefix    String   @db.VarChar(16) // e.g. "PROJ"
+  editHash  String   @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
+  nextSeq   Int      @default(1) @map("next_seq") // per-board card counter
+  createdAt DateTime @default(now()) @map("created_at")
+  cards     Card[]
+
+  @@map("boards")
+}
+
+enum CardStatus {
+  backlog
+  todo
+  doing
+  done
+}
+
+model Card {
+  id        Int        @id @default(autoincrement())
+  boardId   String     @map("board_id") @db.VarChar(12)
+  seq       Int // display id = prefix + "-" + seq
+  title     String     @db.VarChar(255)
+  body      String?    @db.MediumText // markdown
+  status    CardStatus @default(backlog)
+  position  Int        @default(0) // order within a column
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, seq])
+  @@index([boardId, status])
+  @@map("cards")
+}
