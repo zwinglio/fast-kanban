@@ -9,3 +9,9 @@ export const router = createRouter({
     { path: "/b/:id", name: "board", component: Board, props: true },
   ],
 });
+
+router.afterEach((to) => {
+  if (to.name === "home") {
+    document.title = "Fast Kanban";
+  }
+});

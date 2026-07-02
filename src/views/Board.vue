@@ -59,8 +59,10 @@ async function load() {
     const data = await getBoard(boardId);
     board.value = data.board;
     fillColumns(data.cards);
+    document.title = `${data.board.title} - Fast Kanban`;
   } catch (e) {
     loadError.value = "Board not found.";
+    document.title = "Fast Kanban";
   } finally {
     loading.value = false;
   }
