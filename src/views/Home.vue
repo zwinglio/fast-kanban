@@ -29,31 +29,43 @@ async function submit() {
 <template>
   <div class="home">
     <ThemeToggle class="theme-toggle-corner" />
-    <div class="card">
-      <h1>Fast Kanban</h1>
-      <p class="subtitle">Create a lightweight roadmap board in seconds.</p>
-      <form @submit.prevent="submit">
-        <label>
-          Board title
-          <input v-model="title" type="text" placeholder="e.g. Website Relaunch" maxlength="255" required />
-        </label>
-        <label>
-          Card prefix
-          <input
-            v-model="prefix"
-            type="text"
-            placeholder="e.g. PROJ"
-            maxlength="16"
-            style="text-transform: uppercase"
-            required
-          />
-          <span class="hint">Cards will be numbered PREFIX-1, PREFIX-2, ...</span>
-        </label>
-        <p v-if="error" class="error">{{ error }}</p>
-        <button class="btn" type="submit" :disabled="loading">
-          {{ loading ? "Creating..." : "Create board" }}
-        </button>
-      </form>
+    <div class="cards">
+      <div class="card">
+        <h1>Fast Kanban</h1>
+        <p class="subtitle">Create a lightweight roadmap board in seconds.</p>
+        <form @submit.prevent="submit">
+          <label>
+            Board title
+            <input v-model="title" type="text" placeholder="e.g. Website Relaunch" maxlength="255" required />
+          </label>
+          <label>
+            Card prefix
+            <input
+              v-model="prefix"
+              type="text"
+              placeholder="e.g. PROJ"
+              maxlength="16"
+              style="text-transform: uppercase"
+              required
+            />
+            <span class="hint">Cards will be numbered PREFIX-1, PREFIX-2, ...</span>
+          </label>
+          <p v-if="error" class="error">{{ error }}</p>
+          <button class="btn" type="submit" :disabled="loading">
+            {{ loading ? "Creating..." : "Create board" }}
+          </button>
+        </form>
+      </div>
+
+      <aside class="card info-card">
+        <h2>Built for fast, temporary projects</h2>
+        <ul class="benefits">
+          <li>Spin up a board in seconds — no signup required</li>
+          <li>Share the link with your team instantly</li>
+          <li>Track progress on a simple, focused board</li>
+          <li>Privacy first: no emails, logins, or names collected — just a link and a private edit key stored on your device</li>
+        </ul>
+      </aside>
     </div>
   </div>
 </template>
@@ -74,6 +86,15 @@ async function submit() {
   right: 16px;
 }
 
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  width: 100%;
+  max-width: 900px;
+  align-items: stretch;
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -81,6 +102,34 @@ async function submit() {
   padding: 32px;
   width: 100%;
   max-width: 420px;
+  flex: 1 1 380px;
+}
+
+.info-card {
+  max-width: 420px;
+}
+
+.info-card h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+
+.benefits {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text);
+}
+
+.benefits li {
+  line-height: 1.45;
+}
+
+.benefits li::marker {
+  content: "✓ ";
+  color: var(--accent);
 }
 
 h1 {
