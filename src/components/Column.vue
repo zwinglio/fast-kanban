@@ -19,9 +19,9 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="column">
+  <div class="column" :style="{ '--column-accent': `var(--status-${status})`, '--column-accent-bg': `var(--status-${status}-bg)` }">
     <div class="column-header">
-      <span>{{ title }}</span>
+      <span class="title">{{ title }}</span>
       <span class="count">{{ cards.length }}</span>
     </div>
     <draggable
@@ -44,9 +44,10 @@ const emit = defineEmits<{
 
 <style scoped>
 .column {
-  background: var(--column-bg);
+  background: var(--column-accent-bg, var(--column-bg));
   border-radius: 8px;
-  padding: 10px;
+  border-top: 3px solid var(--column-accent);
+  padding: 7px 10px 10px;
   display: flex;
   flex-direction: column;
   min-width: 260px;
@@ -63,6 +64,10 @@ const emit = defineEmits<{
   text-transform: uppercase;
   color: var(--muted);
   padding: 4px 6px 10px;
+}
+
+.column-header .title {
+  color: var(--column-accent);
 }
 
 .count {
