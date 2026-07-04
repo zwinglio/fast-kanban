@@ -16,6 +16,9 @@ const displayId = computed(() => `${props.prefix}-${props.card.seq}`);
   <div class="card-tile" @click="$emit('open')">
     <div class="card-id">{{ displayId }}</div>
     <div class="card-title">{{ card.title }}</div>
+    <div v-if="card.tags?.length" class="card-tags">
+      <span v-for="tag in card.tags" :key="tag.id" class="tag-chip">{{ tag.name }}</span>
+    </div>
   </div>
 </template>
 
@@ -45,5 +48,12 @@ const displayId = computed(() => `${props.prefix}-${props.card.seq}`);
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.card-tags {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 </style>

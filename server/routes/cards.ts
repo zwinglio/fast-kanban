@@ -53,7 +53,21 @@ cards.patch("/:id", async (c) => {
     data.position = position;
   }
 
-  const updated = await prisma.card.update({ where: { id }, data });
+  // When tagIds is present, replace the card's tag set (only with tags owned by this board).
+  if (Array.isArray(body.tagIds)) {
+    const tagIds = body.tagIds.filter((t: unknown): t is number => Number.isInteger(t));
+    const owned = await prisma.tag.findMany({
+      where: { id: { in: tagIds }, boardId: check.card.boardId },
+      select: { id: true },
+    });
+    data.tags = { set: owned.map((t) => ({ id: t.id })) };
+  }
+
+  const updated = await prisma.card.update({
+    where: { id },
+    data,
+    include: { tags: true },
+  });
   return c.json(updated);
 });
 

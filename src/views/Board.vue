@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type CardStatus } from "../api";
+import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type CardStatus, type Tag } from "../api";
 import { getEditKey, setEditKey } from "../lib/editKey";
 import Column from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
@@ -27,6 +27,10 @@ const columns = reactive<Record<CardStatus, Card[]>>({
   doing: [],
   done: [],
 });
+
+const boardTags = ref<Tag[]>([]);
+const activeTagIds = ref<Set<number>>(new Set());
+const activeStatuses = ref<Set<CardStatus>>(new Set(STATUSES.map((s) => s.key)));
 
 const readOnly = ref(true);
 const showNewKeyBanner = ref(route.query.newKey === "1");
@@ -58,6 +62,7 @@ async function load() {
   try {
     const data = await getBoard(boardId);
     board.value = data.board;
+    boardTags.value = data.tags ?? [];
     fillColumns(data.cards);
     document.title = `${data.board.title} - Fast Kanban`;
   } catch (e) {
@@ -127,6 +132,53 @@ function persistColumnOrder(status: CardStatus) {
       });
     }
   });
+}
+
+const filterActive = computed(
+  () => activeTagIds.value.size > 0 || activeStatuses.value.size < STATUSES.length
+);
+
+function cardMatchesFilters(card: Card): boolean {
+  if (!activeStatuses.value.has(card.status)) return false;
+  if (activeTagIds.value.size === 0) return true;
+  return (card.tags ?? []).some((t) => activeTagIds.value.has(t.id));
+}
+
+const filteredColumns = computed<Record<CardStatus, Card[]>>(() => {
+  const out: Record<CardStatus, Card[]> = { backlog: [], todo: [], doing: [], done: [] };
+  for (const s of STATUSES) {
+    out[s.key] = columns[s.key].filter(cardMatchesFilters);
+  }
+  return out;
+});
+
+const totalMatching = computed(() =>
+  STATUSES.reduce((sum, s) => sum + filteredColumns.value[s.key].length, 0)
+);
+
+function toggleTagFilter(id: number) {
+  const next = new Set(activeTagIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  activeTagIds.value = next;
+}
+
+function toggleStatusFilter(key: CardStatus) {
+  const next = new Set(activeStatuses.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  activeStatuses.value = next;
+}
+
+function clearFilters() {
+  activeTagIds.value = new Set();
+  activeStatuses.value = new Set(STATUSES.map((s) => s.key));
+}
+
+function onTagCreated(tag: Tag) {
+  if (!boardTags.value.some((t) => t.id === tag.id)) {
+    boardTags.value = [...boardTags.value, tag].sort((a, b) => a.name.localeCompare(b.name));
+  }
 }
 
 async function copyKey() {
@@ -217,15 +269,66 @@ const shareUrl = computed(() => window.location.href);
         </div>
       </div>
 
+      <div v-if="boardTags.length || filterActive" class="filter-bar">
+        <div class="filter-inner">
+          <div v-if="boardTags.length" class="filter-group">
+            <span class="filter-label">Tags</span>
+            <div class="filter-chips">
+              <button
+                v-for="tag in boardTags"
+                :key="tag.id"
+                type="button"
+                class="tag-chip selectable"
+                :class="{ active: activeTagIds.has(tag.id) }"
+                @click="toggleTagFilter(tag.id)"
+              >
+                {{ tag.name }}
+              </button>
+            </div>
+          </div>
+          <div v-if="boardTags.length" class="filter-divider" />
+          <div class="filter-group">
+            <span class="filter-label">Status</span>
+            <div class="filter-chips">
+              <button
+                v-for="s in STATUSES"
+                :key="s.key"
+                type="button"
+                class="status-chip"
+                :class="[`status-${s.key}`, { active: activeStatuses.has(s.key) }]"
+                @click="toggleStatusFilter(s.key)"
+              >
+                {{ s.label }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <span class="filter-count" :class="{ dimmed: !filterActive }">
+            {{ filterActive ? `${totalMatching} shown` : `${totalMatching} cards` }}
+          </span>
+          <button
+            v-if="filterActive"
+            class="btn secondary small"
+            type="button"
+            @click="clearFilters"
+          >
+            Clear filters
+          </button>
+        </div>
+      </div>
+
       <div class="columns">
         <Column
           v-for="s in STATUSES"
+          v-show="activeStatuses.has(s.key)"
           :key="s.key"
           :title="s.label"
           :status="s.key"
-          :cards="columns[s.key]"
+          :cards="filterActive ? filteredColumns[s.key] : columns[s.key]"
           :prefix="board.prefix"
           :read-only="readOnly"
+          :disable-drag="filterActive"
           @change="persistColumnOrder(s.key)"
           @open="openCard"
           @add-card="openAddCard(s.key)"
@@ -239,9 +342,11 @@ const shareUrl = computed(() => window.location.href);
         :read-only="readOnly"
         :card="modalState.card"
         :initial-status="modalState.status"
+        :board-tags="boardTags"
         @close="closeModal"
         @saved="onSaved"
         @deleted="onDeleted"
+        @tag-created="onTagCreated"
       />
     </template>
   </div>
@@ -254,6 +359,95 @@ const shareUrl = computed(() => window.location.href);
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.filter-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filter-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.status-chip:hover {
+  border-color: var(--muted);
+}
+
+.status-chip.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.status-chip.active.status-backlog { background: var(--status-backlog); }
+.status-chip.active.status-todo { background: var(--status-todo); }
+.status-chip.active.status-doing { background: var(--status-doing); }
+.status-chip.active.status-done { background: var(--status-done); }
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.filter-count {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filter-count.dimmed {
+  opacity: 0.6;
 }
 
 .status-msg {

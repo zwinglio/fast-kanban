@@ -45,11 +45,18 @@ boards.get("/:id", async (c) => {
   const cards = await prisma.card.findMany({
     where: { boardId: id },
     orderBy: [{ status: "asc" }, { position: "asc" }],
+    include: { tags: true },
+  });
+
+  const tags = await prisma.tag.findMany({
+    where: { boardId: id },
+    orderBy: { name: "asc" },
   });
 
   return c.json({
     board: { id: board.id, title: board.title, prefix: board.prefix },
     cards,
+    tags,
   });
 });
 
@@ -102,8 +109,56 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
       status: status as Prisma.CardUncheckedCreateInput["status"],
       position,
     };
-    return tx.card.create({ data });
+
+    // Attach only tags that belong to this board (guard against cross-board ids).
+    const tagIds = Array.isArray(body.tagIds)
+      ? body.tagIds.filter((t: unknown): t is number => Number.isInteger(t))
+      : [];
+    if (tagIds.length > 0) {
+      const owned = await tx.tag.findMany({
+        where: { id: { in: tagIds }, boardId },
+        select: { id: true },
+      });
+      if (owned.length > 0) {
+        data.tags = { connect: owned.map((t) => ({ id: t.id })) };
+      }
+    }
+
+    return tx.card.create({ data, include: { tags: true } });
   });
 
   return c.json(card, 201);
+});
+
+// POST /api/boards/:id/tags - create (or return existing) tag for a board (edit-key protected)
+boards.post("/:id/tags", requireEditKey, async (c) => {
+  const boardId = c.req.param("id");
+  if (!boardId) return c.json({ error: "Missing board id" }, 400);
+  const body = await c.req.json().catch(() => null);
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+
+  if (!name || name.length > 50) {
+    return c.json({ error: "Tag name must be 1-50 chars" }, 400);
+  }
+
+  // Enforce a maximum of 5 tags per board. Upsert means an existing name
+  // won't count against the limit, so only check when creating new.
+  const existing = await prisma.tag.findUnique({
+    where: { boardId_name: { boardId, name } },
+    select: { id: true },
+  });
+  if (!existing) {
+    const count = await prisma.tag.count({ where: { boardId } });
+    if (count >= 5) {
+      return c.json({ error: "A board can have at most 5 tags" }, 400);
+    }
+  }
+
+  const tag = await prisma.tag.upsert({
+    where: { boardId_name: { boardId, name } },
+    update: {},
+    create: { boardId, name },
+  });
+
+  return c.json(tag, 201);
 });

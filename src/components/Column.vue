@@ -9,6 +9,7 @@ const props = defineProps<{
   cards: CardType[];
   prefix: string;
   readOnly: boolean;
+  disableDrag?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,7 +30,7 @@ const emit = defineEmits<{
       :group="{ name: 'cards', pull: true, put: true }"
       item-key="id"
       class="column-body"
-      :disabled="readOnly"
+      :disabled="readOnly || disableDrag"
       :animation="150"
       ghost-class="ghost-card"
       @change="emit('change')"

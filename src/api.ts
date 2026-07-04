@@ -2,6 +2,12 @@ import { getEditKey } from "./lib/editKey";
 
 export type CardStatus = "backlog" | "todo" | "doing" | "done";
 
+export interface Tag {
+  id: number;
+  boardId: string;
+  name: string;
+}
+
 export interface Card {
   id: number;
   boardId: string;
@@ -10,6 +16,7 @@ export interface Card {
   body: string | null;
   status: CardStatus;
   position: number;
+  tags: Tag[];
   createdAt: string;
   updatedAt: string;
 }
@@ -54,7 +61,7 @@ export function createBoard(title: string, prefix: string) {
 }
 
 export function getBoard(id: string) {
-  return request<{ board: Board; cards: Card[] }>(`/boards/${id}`);
+  return request<{ board: Board; cards: Card[]; tags: Tag[] }>(`/boards/${id}`);
 }
 
 export function verifyEditKey(id: string, key: string) {
@@ -65,7 +72,7 @@ export function verifyEditKey(id: string, key: string) {
 
 export function createCard(
   boardId: string,
-  payload: { title: string; body?: string; status?: CardStatus }
+  payload: { title: string; body?: string; status?: CardStatus; tagIds?: number[] }
 ) {
   return request<Card>(`/boards/${boardId}/cards`, {
     method: "POST",
@@ -76,7 +83,7 @@ export function createCard(
 export function updateCard(
   boardId: string,
   cardId: number,
-  payload: Partial<{ title: string; body: string | null; status: CardStatus; position: number }>
+  payload: Partial<{ title: string; body: string | null; status: CardStatus; position: number; tagIds: number[] }>
 ) {
   return request<Card>(`/cards/${cardId}`, {
     method: "PATCH",
@@ -86,6 +93,17 @@ export function updateCard(
 
 export function deleteCard(boardId: string, cardId: number) {
   return request<{ ok: true }>(`/cards/${cardId}`, { method: "DELETE" }, boardId);
+}
+
+export function createTag(boardId: string, name: string) {
+  return request<Tag>(`/boards/${boardId}/tags`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  }, boardId);
+}
+
+export function deleteTag(boardId: string, tagId: number) {
+  return request<{ ok: true }>(`/tags/${tagId}`, { method: "DELETE" }, boardId);
 }
 
 export { ApiError };

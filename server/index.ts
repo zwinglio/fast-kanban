@@ -3,11 +3,13 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { boards } from "./routes/boards.js";
 import { cards } from "./routes/cards.js";
+import { tags } from "./routes/tags.js";
 
 const app = new Hono();
 
 app.route("/api/boards", boards);
 app.route("/api/cards", cards);
+app.route("/api/tags", tags);
 
 // Serve the built SPA in production.
 if (process.env.NODE_ENV === "production") {

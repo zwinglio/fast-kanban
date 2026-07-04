@@ -16,8 +16,20 @@ model Board {
   nextSeq   Int      @default(1) @map("next_seq") // per-board card counter
   createdAt DateTime @default(now()) @map("created_at")
   cards     Card[]
+  tags      Tag[]
 
   @@map("boards")
+}
+
+model Tag {
+  id      Int    @id @default(autoincrement())
+  boardId String @map("board_id") @db.VarChar(12)
+  name    String @db.VarChar(50)
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards   Card[]
+
+  @@unique([boardId, name]) // no duplicate tag names per board
+  @@map("tags")
 }
 
 enum CardStatus {
@@ -38,6 +50,7 @@ model Card {
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")
   board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tags      Tag[]
 
   @@unique([boardId, seq])
   @@index([boardId, status])
