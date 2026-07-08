@@ -67,6 +67,10 @@ async function submit() {
         </ul>
       </aside>
     </div>
+    <footer class="credits">
+      Made in Brazil 🇧🇷 by
+      <a href="https://zwinglio.com" target="_blank" rel="noopener noreferrer">Samuel Zwinglio</a>
+    </footer>
   </div>
 </template>
 
@@ -172,5 +176,24 @@ input {
   color: var(--danger);
   font-size: 14px;
   margin: 0;
+}
+
+.credits {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.credits a {
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+.credits a:hover {
+  color: var(--accent);
 }
 </style>
