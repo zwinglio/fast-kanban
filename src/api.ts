@@ -1,11 +1,17 @@
 import { getEditKey } from "./lib/editKey";
 
-export type CardStatus = "backlog" | "todo" | "doing" | "done";
-
 export interface Tag {
   id: number;
   boardId: string;
   name: string;
+}
+
+export interface Column {
+  id: number;
+  boardId: string;
+  name: string;
+  color: string;
+  position: number;
 }
 
 export interface Card {
@@ -14,7 +20,7 @@ export interface Card {
   seq: number;
   title: string;
   body: string | null;
-  status: CardStatus;
+  columnId: number;
   position: number;
   tags: Tag[];
   createdAt: string;
@@ -61,7 +67,7 @@ export function createBoard(title: string, prefix: string) {
 }
 
 export function getBoard(id: string) {
-  return request<{ board: Board; cards: Card[]; tags: Tag[] }>(`/boards/${id}`);
+  return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[] }>(`/boards/${id}`);
 }
 
 export function verifyEditKey(id: string, key: string) {
@@ -72,7 +78,7 @@ export function verifyEditKey(id: string, key: string) {
 
 export function createCard(
   boardId: string,
-  payload: { title: string; body?: string; status?: CardStatus; tagIds?: number[] }
+  payload: { title: string; body?: string; columnId?: number; tagIds?: number[] }
 ) {
   return request<Card>(`/boards/${boardId}/cards`, {
     method: "POST",
@@ -83,7 +89,7 @@ export function createCard(
 export function updateCard(
   boardId: string,
   cardId: number,
-  payload: Partial<{ title: string; body: string | null; status: CardStatus; position: number; tagIds: number[] }>
+  payload: Partial<{ title: string; body: string | null; columnId: number; position: number; tagIds: number[] }>
 ) {
   return request<Card>(`/cards/${cardId}`, {
     method: "PATCH",
@@ -111,6 +117,24 @@ export function renameTag(boardId: string, tagId: number, name: string) {
     method: "PATCH",
     body: JSON.stringify({ name }),
   }, boardId);
+}
+
+export function createColumn(boardId: string, name: string, color: string) {
+  return request<Column>(`/boards/${boardId}/columns`, {
+    method: "POST",
+    body: JSON.stringify({ name, color }),
+  }, boardId);
+}
+
+export function updateColumn(boardId: string, columnId: number, patch: Partial<{ name: string; color: string; position: number }>) {
+  return request<Column>(`/columns/${columnId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }, boardId);
+}
+
+export function deleteColumn(boardId: string, columnId: number) {
+  return request<{ ok: true }>(`/columns/${columnId}`, { method: "DELETE" }, boardId);
 }
 
 export { ApiError };

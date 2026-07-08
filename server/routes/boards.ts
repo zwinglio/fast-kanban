@@ -3,6 +3,7 @@ import { customAlphabet } from "nanoid";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../auth.js";
+import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
 const nanoidKey = customAlphabet(
@@ -30,7 +31,15 @@ boards.post("/", async (c) => {
   const editHash = await hashEditKey(editKey);
 
   await prisma.board.create({
-    data: { id, title, prefix, editHash },
+    data: {
+      id,
+      title,
+      prefix,
+      editHash,
+      columns: {
+        create: DEFAULT_COLUMNS,
+      },
+    },
   });
 
   return c.json({ id, editKey }, 201);
@@ -42,21 +51,27 @@ boards.get("/:id", async (c) => {
   const board = await prisma.board.findUnique({ where: { id } });
   if (!board) return c.json({ error: "Board not found" }, 404);
 
-  const cards = await prisma.card.findMany({
-    where: { boardId: id },
-    orderBy: [{ status: "asc" }, { position: "asc" }],
-    include: { tags: true },
-  });
-
-  const tags = await prisma.tag.findMany({
-    where: { boardId: id },
-    orderBy: { name: "asc" },
-  });
+  const [cards, tags, columns] = await Promise.all([
+    prisma.card.findMany({
+      where: { boardId: id },
+      orderBy: [{ columnId: "asc" }, { position: "asc" }],
+      include: { tags: true },
+    }),
+    prisma.tag.findMany({
+      where: { boardId: id },
+      orderBy: { name: "asc" },
+    }),
+    prisma.column.findMany({
+      where: { boardId: id },
+      orderBy: { position: "asc" },
+    }),
+  ]);
 
   return c.json({
     board: { id: board.id, title: board.title, prefix: board.prefix },
     cards,
     tags,
+    columns,
   });
 });
 
@@ -78,14 +93,32 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
   const body = await c.req.json().catch(() => null);
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const cardBody = typeof body?.body === "string" ? body.body : null;
-  const status = typeof body?.status === "string" ? body.status : "backlog";
 
   if (!title || title.length > 255) {
     return c.json({ error: "Title is required (max 255 chars)" }, 400);
   }
-  const validStatuses = ["backlog", "todo", "doing", "done"];
-  if (!validStatuses.includes(status)) {
-    return c.json({ error: "Invalid status" }, 400);
+
+  // Resolve columnId: must belong to this board; default to lowest-position column
+  let columnId: number | undefined = undefined;
+  if (typeof body?.columnId === "number" && Number.isInteger(body.columnId)) {
+    columnId = body.columnId;
+  }
+  if (columnId === undefined) {
+    const firstCol = await prisma.column.findFirst({
+      where: { boardId },
+      orderBy: { position: "asc" },
+    });
+    if (!firstCol) {
+      return c.json({ error: "Board has no columns" }, 400);
+    }
+    columnId = firstCol.id;
+  } else {
+    const col = await prisma.column.findFirst({
+      where: { id: columnId, boardId },
+    });
+    if (!col) {
+      return c.json({ error: "Invalid column" }, 400);
+    }
   }
 
   const card = await prisma.$transaction(async (tx) => {
@@ -96,7 +129,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
     const seq = updatedBoard.nextSeq - 1;
 
     const last = await tx.card.findFirst({
-      where: { boardId, status: status as any },
+      where: { boardId, columnId },
       orderBy: { position: "desc" },
     });
     const position = last ? last.position + 1 : 0;
@@ -106,7 +139,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
       seq,
       title,
       body: cardBody,
-      status: status as Prisma.CardUncheckedCreateInput["status"],
+      columnId,
       position,
     };
 
@@ -128,6 +161,39 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
   });
 
   return c.json(card, 201);
+});
+
+// POST /api/boards/:id/columns - create a column (edit-key protected)
+boards.post("/:id/columns", requireEditKey, async (c) => {
+  const boardId = c.req.param("id");
+  if (!boardId) return c.json({ error: "Missing board id" }, 400);
+  const body = await c.req.json().catch(() => null);
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  const color = typeof body?.color === "string" ? body.color : "";
+
+  if (!name || name.length > 50) {
+    return c.json({ error: "Column name must be 1-50 chars" }, 400);
+  }
+  if (!isValidPaletteColor(color)) {
+    return c.json({ error: "Invalid color" }, 400);
+  }
+
+  const count = await prisma.column.count({ where: { boardId } });
+  if (count >= MAX_COLUMNS) {
+    return c.json({ error: `A board can have at most ${MAX_COLUMNS} columns` }, 400);
+  }
+
+  const maxPos = await prisma.column.aggregate({
+    where: { boardId },
+    _max: { position: true },
+  });
+  const position = (maxPos._max.position ?? -1) + 1;
+
+  const column = await prisma.column.create({
+    data: { boardId, name, color, position },
+  });
+
+  return c.json(column, 201);
 });
 
 // POST /api/boards/:id/tags - create (or return existing) tag for a board (edit-key protected)

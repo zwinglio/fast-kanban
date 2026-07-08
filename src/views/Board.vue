@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type CardStatus, type Tag } from "../api";
+import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag } from "../api";
 import { getEditKey, setEditKey } from "../lib/editKey";
-import Column from "../components/Column.vue";
+import ColumnComp from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
+import BoardSettings from "../components/BoardSettings.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
 
 const route = useRoute();
@@ -14,23 +15,12 @@ const board = ref<Board | null>(null);
 const loading = ref(true);
 const loadError = ref("");
 
-const STATUSES: { key: CardStatus; label: string }[] = [
-  { key: "backlog", label: "Backlog" },
-  { key: "todo", label: "Todo" },
-  { key: "doing", label: "Doing" },
-  { key: "done", label: "Done" },
-];
-
-const columns = reactive<Record<CardStatus, Card[]>>({
-  backlog: [],
-  todo: [],
-  doing: [],
-  done: [],
-});
+const boardColumns = ref<Column[]>([]);
+const columns = reactive<Record<number, Card[]>>({});
 
 const boardTags = ref<Tag[]>([]);
 const activeTagIds = ref<Set<number>>(new Set());
-const activeStatuses = ref<Set<CardStatus>>(new Set(STATUSES.map((s) => s.key)));
+const activeColumnIds = ref<Set<number>>(new Set());
 
 const readOnly = ref(true);
 const showNewKeyBanner = ref(route.query.newKey === "1");
@@ -42,18 +32,33 @@ const keyInput = ref("");
 const keyEntryError = ref("");
 const keyEntryLoading = ref(false);
 
-const modalState = ref<{ mode: "edit" | "create"; card: Card | null; status?: CardStatus } | null>(
+const showSettings = ref(false);
+
+const modalState = ref<{ mode: "edit" | "create"; card: Card | null; columnId?: number } | null>(
   null
 );
 
 function fillColumns(cards: Card[]) {
-  for (const s of STATUSES) columns[s.key] = [];
+  for (const col of boardColumns.value) {
+    columns[col.id] = [];
+  }
   for (const card of cards) {
-    columns[card.status].push(card);
+    if (!columns[card.columnId]) columns[card.columnId] = [];
+    columns[card.columnId].push(card);
   }
-  for (const s of STATUSES) {
-    columns[s.key].sort((a, b) => a.position - b.position);
+  for (const col of boardColumns.value) {
+    if (columns[col.id]) {
+      columns[col.id].sort((a, b) => a.position - b.position);
+    }
   }
+}
+
+function cardCountsByColumn(): Record<number, number> {
+  const counts: Record<number, number> = {};
+  for (const col of boardColumns.value) {
+    counts[col.id] = columns[col.id]?.length ?? 0;
+  }
+  return counts;
 }
 
 async function load() {
@@ -62,7 +67,9 @@ async function load() {
   try {
     const data = await getBoard(boardId);
     board.value = data.board;
+    boardColumns.value = data.columns ?? [];
     boardTags.value = data.tags ?? [];
+    activeColumnIds.value = new Set(boardColumns.value.map((c) => c.id));
     fillColumns(data.cards);
     document.title = `${data.board.title} - Fast Kanban`;
   } catch (e) {
@@ -96,8 +103,8 @@ function openCard(card: Card) {
   modalState.value = { mode: "edit", card };
 }
 
-function openAddCard(status: CardStatus) {
-  modalState.value = { mode: "create", card: null, status };
+function openAddCard(columnId: number) {
+  modalState.value = { mode: "create", card: null, columnId };
 }
 
 function closeModal() {
@@ -105,29 +112,35 @@ function closeModal() {
 }
 
 function onSaved(card: Card) {
-  for (const s of STATUSES) {
-    columns[s.key] = columns[s.key].filter((c) => c.id !== card.id);
+  for (const col of boardColumns.value) {
+    if (columns[col.id]) {
+      columns[col.id] = columns[col.id].filter((c) => c.id !== card.id);
+    }
   }
-  columns[card.status].push(card);
-  columns[card.status].sort((a, b) => a.position - b.position);
+  if (!columns[card.columnId]) columns[card.columnId] = [];
+  columns[card.columnId].push(card);
+  columns[card.columnId].sort((a, b) => a.position - b.position);
   closeModal();
 }
 
 function onDeleted(id: number) {
-  for (const s of STATUSES) {
-    columns[s.key] = columns[s.key].filter((c) => c.id !== id);
+  for (const col of boardColumns.value) {
+    if (columns[col.id]) {
+      columns[col.id] = columns[col.id].filter((c) => c.id !== id);
+    }
   }
   closeModal();
 }
 
-function persistColumnOrder(status: CardStatus) {
-  columns[status].forEach((card, idx) => {
-    const changed = card.position !== idx || card.status !== status;
+function persistColumnOrder(columnId: number) {
+  const colCards = columns[columnId];
+  if (!colCards) return;
+  colCards.forEach((card, idx) => {
+    const changed = card.position !== idx || card.columnId !== columnId;
     card.position = idx;
-    card.status = status;
+    card.columnId = columnId;
     if (changed) {
-      updateCard(boardId, card.id, { status, position: idx }).catch(() => {
-        // Best-effort; reload to resync on failure.
+      updateCard(boardId, card.id, { columnId, position: idx }).catch(() => {
         load();
       });
     }
@@ -135,25 +148,25 @@ function persistColumnOrder(status: CardStatus) {
 }
 
 const filterActive = computed(
-  () => activeTagIds.value.size > 0 || activeStatuses.value.size < STATUSES.length
+  () => activeTagIds.value.size > 0 || activeColumnIds.value.size < boardColumns.value.length
 );
 
 function cardMatchesFilters(card: Card): boolean {
-  if (!activeStatuses.value.has(card.status)) return false;
+  if (!activeColumnIds.value.has(card.columnId)) return false;
   if (activeTagIds.value.size === 0) return true;
   return (card.tags ?? []).some((t) => activeTagIds.value.has(t.id));
 }
 
-const filteredColumns = computed<Record<CardStatus, Card[]>>(() => {
-  const out: Record<CardStatus, Card[]> = { backlog: [], todo: [], doing: [], done: [] };
-  for (const s of STATUSES) {
-    out[s.key] = columns[s.key].filter(cardMatchesFilters);
+const filteredColumns = computed<Record<number, Card[]>>(() => {
+  const out: Record<number, Card[]> = {};
+  for (const col of boardColumns.value) {
+    out[col.id] = (columns[col.id] ?? []).filter(cardMatchesFilters);
   }
   return out;
 });
 
 const totalMatching = computed(() =>
-  STATUSES.reduce((sum, s) => sum + filteredColumns.value[s.key].length, 0)
+  boardColumns.value.reduce((sum, col) => sum + (filteredColumns.value[col.id]?.length ?? 0), 0)
 );
 
 function toggleTagFilter(id: number) {
@@ -163,16 +176,16 @@ function toggleTagFilter(id: number) {
   activeTagIds.value = next;
 }
 
-function toggleStatusFilter(key: CardStatus) {
-  const next = new Set(activeStatuses.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
-  activeStatuses.value = next;
+function toggleColumnFilter(id: number) {
+  const next = new Set(activeColumnIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  activeColumnIds.value = next;
 }
 
 function clearFilters() {
   activeTagIds.value = new Set();
-  activeStatuses.value = new Set(STATUSES.map((s) => s.key));
+  activeColumnIds.value = new Set(boardColumns.value.map((c) => c.id));
 }
 
 function onTagCreated(tag: Tag) {
@@ -185,8 +198,8 @@ function onTagRenamed(tag: Tag) {
   boardTags.value = boardTags.value
     .map((t) => (t.id === tag.id ? tag : t))
     .sort((a, b) => a.name.localeCompare(b.name));
-  for (const s of STATUSES) {
-    for (const card of columns[s.key]) {
+  for (const col of boardColumns.value) {
+    for (const card of columns[col.id] ?? []) {
       card.tags = card.tags.map((t) => (t.id === tag.id ? tag : t));
     }
   }
@@ -199,8 +212,8 @@ function onTagDeleted(id: number) {
     next.delete(id);
     activeTagIds.value = next;
   }
-  for (const s of STATUSES) {
-    for (const card of columns[s.key]) {
+  for (const col of boardColumns.value) {
+    for (const card of columns[col.id] ?? []) {
       card.tags = card.tags.filter((t) => t.id !== id);
     }
   }
@@ -242,7 +255,9 @@ async function submitKeyEntry() {
   }
 }
 
-const shareUrl = computed(() => window.location.href);
+async function onSettingsChanged() {
+  await load();
+}
 </script>
 
 <template>
@@ -259,6 +274,9 @@ const shareUrl = computed(() => window.location.href);
           <span v-if="readOnly" class="read-only-badge">Read-only</span>
           <button v-if="readOnly" class="btn secondary" @click="showKeyEntry = true">
             Enter edit key
+          </button>
+          <button v-if="!readOnly" class="theme-toggle" type="button" title="Board settings" @click="showSettings = true">
+            ⚙️
           </button>
           <ThemeToggle />
         </div>
@@ -313,17 +331,17 @@ const shareUrl = computed(() => window.location.href);
           </div>
           <div v-if="boardTags.length" class="filter-divider" />
           <div class="filter-group">
-            <span class="filter-label">Status</span>
+            <span class="filter-label">Columns</span>
             <div class="filter-chips">
               <button
-                v-for="s in STATUSES"
-                :key="s.key"
+                v-for="col in boardColumns"
+                :key="col.id"
                 type="button"
                 class="status-chip"
-                :class="[`status-${s.key}`, { active: activeStatuses.has(s.key) }]"
-                @click="toggleStatusFilter(s.key)"
+                :style="activeColumnIds.has(col.id) ? { background: col.color, borderColor: 'transparent', color: '#fff' } : {}"
+                @click="toggleColumnFilter(col.id)"
               >
-                {{ s.label }}
+                {{ col.name }}
               </button>
             </div>
           </div>
@@ -344,19 +362,20 @@ const shareUrl = computed(() => window.location.href);
       </div>
 
       <div class="columns">
-        <Column
-          v-for="s in STATUSES"
-          v-show="activeStatuses.has(s.key)"
-          :key="s.key"
-          :title="s.label"
-          :status="s.key"
-          :cards="filterActive ? filteredColumns[s.key] : columns[s.key]"
+        <ColumnComp
+          v-for="col in boardColumns"
+          v-show="activeColumnIds.has(col.id)"
+          :key="col.id"
+          :title="col.name"
+          :color="col.color"
+          :column-id="col.id"
+          :cards="filterActive ? (filteredColumns[col.id] ?? []) : (columns[col.id] ?? [])"
           :prefix="board.prefix"
           :read-only="readOnly"
           :disable-drag="filterActive"
-          @change="persistColumnOrder(s.key)"
+          @change="persistColumnOrder(col.id)"
           @open="openCard"
-          @add-card="openAddCard(s.key)"
+          @add-card="openAddCard(col.id)"
         />
       </div>
 
@@ -366,14 +385,24 @@ const shareUrl = computed(() => window.location.href);
         :prefix="board.prefix"
         :read-only="readOnly"
         :card="modalState.card"
-        :initial-status="modalState.status"
+        :initial-column-id="modalState.columnId"
         :board-tags="boardTags"
+        :board-columns="boardColumns"
         @close="closeModal"
         @saved="onSaved"
         @deleted="onDeleted"
         @tag-created="onTagCreated"
         @tag-renamed="onTagRenamed"
         @tag-deleted="onTagDeleted"
+      />
+
+      <BoardSettings
+        v-if="showSettings"
+        :board-id="boardId"
+        :columns="boardColumns"
+        :card-counts="cardCountsByColumn()"
+        @close="showSettings = false"
+        @changed="onSettingsChanged"
       />
     </template>
   </div>
@@ -454,11 +483,6 @@ const shareUrl = computed(() => window.location.href);
   color: #fff;
   border-color: transparent;
 }
-
-.status-chip.active.status-backlog { background: var(--status-backlog); }
-.status-chip.active.status-todo { background: var(--status-todo); }
-.status-chip.active.status-doing { background: var(--status-doing); }
-.status-chip.active.status-done { background: var(--status-done); }
 
 .filter-actions {
   display: flex;

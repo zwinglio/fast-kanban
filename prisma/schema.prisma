@@ -17,6 +17,7 @@ model Board {
   createdAt DateTime @default(now()) @map("created_at")
   cards     Card[]
   tags      Tag[]
+  columns   Column[]
 
   @@map("boards")
 }
@@ -32,27 +33,34 @@ model Tag {
   @@map("tags")
 }
 
-enum CardStatus {
-  backlog
-  todo
-  doing
-  done
+model Column {
+  id       Int    @id @default(autoincrement())
+  boardId  String @map("board_id") @db.VarChar(12)
+  name     String @db.VarChar(50)
+  color    String @db.VarChar(7)
+  position Int    @default(0)
+  board    Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards    Card[]
+
+  @@index([boardId])
+  @@map("board_columns")
 }
 
 model Card {
-  id        Int        @id @default(autoincrement())
-  boardId   String     @map("board_id") @db.VarChar(12)
+  id        Int      @id @default(autoincrement())
+  boardId   String   @map("board_id") @db.VarChar(12)
   seq       Int // display id = prefix + "-" + seq
-  title     String     @db.VarChar(255)
-  body      String?    @db.MediumText // markdown
-  status    CardStatus @default(backlog)
-  position  Int        @default(0) // order within a column
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  title     String   @db.VarChar(255)
+  body      String?  @db.MediumText // markdown
+  columnId  Int      @map("column_id")
+  position  Int      @default(0) // order within a column
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column    Column   @relation(fields: [columnId], references: [id])
   tags      Tag[]
 
   @@unique([boardId, seq])
-  @@index([boardId, status])
+  @@index([boardId, columnId])
   @@map("cards")
 }

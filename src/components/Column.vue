@@ -5,7 +5,8 @@ import CardTile from "./Card.vue";
 
 const props = defineProps<{
   title: string;
-  status: string;
+  color: string;
+  columnId: number;
   cards: CardType[];
   prefix: string;
   readOnly: boolean;
@@ -20,7 +21,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="column" :style="{ '--column-accent': `var(--status-${status})`, '--column-accent-bg': `var(--status-${status}-bg)` }">
+  <div class="column" :style="{ '--column-accent': color, '--column-accent-bg': `color-mix(in srgb, ${color} 8%, transparent)` }">
     <div class="column-header">
       <span class="title">{{ title }}</span>
       <span class="count">{{ cards.length }}</span>

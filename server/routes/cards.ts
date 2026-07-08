@@ -15,9 +15,7 @@ async function requireCardEditKey(cardId: number, key: string | undefined) {
   return { ok: true as const, card };
 }
 
-const VALID_STATUSES = ["backlog", "todo", "doing", "done"];
-
-// PATCH /api/cards/:id - edit fields and/or move (status/position)
+// PATCH /api/cards/:id - edit fields and/or move (columnId/position)
 cards.patch("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
@@ -39,11 +37,19 @@ cards.patch("/:id", async (c) => {
   if (body.body !== undefined) {
     data.body = body.body === null ? null : String(body.body);
   }
-  if (body.status !== undefined) {
-    if (!VALID_STATUSES.includes(body.status)) {
-      return c.json({ error: "Invalid status" }, 400);
+  if (body.columnId !== undefined) {
+    const columnId = Number(body.columnId);
+    if (!Number.isInteger(columnId)) {
+      return c.json({ error: "Invalid column id" }, 400);
     }
-    data.status = body.status;
+    // Verify the column belongs to the card's board
+    const col = await prisma.column.findFirst({
+      where: { id: columnId, boardId: check.card.boardId },
+    });
+    if (!col) {
+      return c.json({ error: "Invalid column" }, 400);
+    }
+    data.columnId = columnId;
   }
   if (body.position !== undefined) {
     const position = Number(body.position);

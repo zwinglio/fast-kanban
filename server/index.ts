@@ -3,12 +3,14 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { boards } from "./routes/boards.js";
 import { cards } from "./routes/cards.js";
+import { columns } from "./routes/columns.js";
 import { tags } from "./routes/tags.js";
 
 const app = new Hono();
 
 app.route("/api/boards", boards);
 app.route("/api/cards", cards);
+app.route("/api/columns", columns);
 app.route("/api/tags", tags);
 
 // Serve the built SPA. This bundled server is only ever run in production

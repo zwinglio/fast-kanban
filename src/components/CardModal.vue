@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { createCard, updateCard, deleteCard, createTag, deleteTag, renameTag, ApiError, type Card, type CardStatus, type Tag } from "../api";
+import { createCard, updateCard, deleteCard, createTag, deleteTag, renameTag, ApiError, type Card, type Column, type Tag } from "../api";
 import { renderMarkdown } from "../lib/markdown";
 
 const props = defineProps<{
@@ -8,8 +8,9 @@ const props = defineProps<{
   prefix: string;
   readOnly: boolean;
   card: Card | null; // null => create mode
-  initialStatus?: CardStatus;
+  initialColumnId?: number;
   boardTags: Tag[];
+  boardColumns: Column[];
 }>();
 
 const emit = defineEmits<{
@@ -24,7 +25,7 @@ const emit = defineEmits<{
 const isNew = props.card === null;
 const title = ref(props.card?.title ?? "");
 const body = ref(props.card?.body ?? "");
-const status = ref<CardStatus>(props.card?.status ?? props.initialStatus ?? "backlog");
+const columnId = ref<number>(props.card?.columnId ?? props.initialColumnId ?? props.boardColumns[0]?.id ?? 0);
 const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
 const newTagName = ref("");
 const creatingTag = ref(false);
@@ -139,7 +140,7 @@ async function save() {
       const created = await createCard(props.boardId, {
         title: trimmedTitle,
         body: body.value,
-        status: status.value,
+        columnId: columnId.value,
         tagIds: selectedTagIds.value,
       });
       emit("saved", created);
@@ -147,7 +148,7 @@ async function save() {
       const updated = await updateCard(props.boardId, props.card!.id, {
         title: trimmedTitle,
         body: body.value,
-        status: status.value,
+        columnId: columnId.value,
         tagIds: selectedTagIds.value,
       });
       emit("saved", updated);
@@ -190,12 +191,9 @@ async function remove() {
         </label>
 
         <label>
-          Status
-          <select v-model="status" :disabled="readOnly">
-            <option value="backlog">Backlog</option>
-            <option value="todo">Todo</option>
-            <option value="doing">Doing</option>
-            <option value="done">Done</option>
+          Column
+          <select v-model="columnId" :disabled="readOnly">
+            <option v-for="col in boardColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
           </select>
         </label>
 

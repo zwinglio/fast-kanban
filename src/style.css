@@ -19,14 +19,6 @@
   --overlay-bg: rgba(9, 30, 66, 0.54);
   --shadow-color: rgba(9, 30, 66, 0.1);
   --secondary-hover-bg: #f0f5ff;
-  --status-backlog: #5e6c84;
-  --status-todo: #4c9aff;
-  --status-doing: #0052cc;
-  --status-done: #36b37e;
-  --status-backlog-bg: #f7f8fa;
-  --status-todo-bg: #f3f8ff;
-  --status-doing-bg: #eff4ff;
-  --status-done-bg: #f1fbf5;
   color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -52,14 +44,6 @@
   --overlay-bg: rgba(1, 4, 9, 0.7);
   --shadow-color: rgba(0, 0, 0, 0.4);
   --secondary-hover-bg: #1b2a41;
-  --status-backlog: #8b949e;
-  --status-todo: #6fb1ff;
-  --status-doing: #4c9aff;
-  --status-done: #3fb950;
-  --status-backlog-bg: #1a1f26;
-  --status-todo-bg: #141b2a;
-  --status-doing-bg: #101a2c;
-  --status-done-bg: #142a1c;
   color-scheme: dark;
 }
 
