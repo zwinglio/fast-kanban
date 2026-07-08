@@ -75,6 +75,8 @@ single Node process is all you need in prod.
 
 ## Deploying to CloudPanel (Node site)
 
+### One-time server setup
+
 1. Create a Node site in CloudPanel and a MySQL database for it; note the DB credentials it gives you.
 2. Set the site's **root directory** to this project's directory (the one containing `dist/`,
    `dist-server/`, `prisma/`, and `package.json`) — not `dist/` itself, since the Node process serves the
@@ -83,15 +85,50 @@ single Node process is all you need in prod.
    `NODE_ENV=production` (and `PORT` if CloudPanel requires a specific value — it usually injects one).
 4. Set the **startup file** to `dist-server/index.js` (or configure the app's start command to
    `node dist-server/index.js`).
-5. On deploy (or via SSH on the server):
-   ```bash
-   npm install --omit=dev   # or bun install, just for node_modules; @prisma/client needs generating
-   npx prisma generate
-   npx prisma migrate deploy
-   npm run build            # bun run build — builds dist/
-   npm run build:server     # bun run build:server — builds dist-server/
-   ```
-6. Restart the CloudPanel Node app. It should now serve the SPA and `/api/*` from the same process/port.
+5. The app process is managed by **PM2** under the name `fast-kanban`.
+
+### Automated deploy via GitHub Actions
+
+Pushing to `main` triggers the CI/CD workflow (`.github/workflows/ci-cd.yml`) which:
+
+1. **CI job** (runs on every push & PR): typecheck (`vue-tsc --noEmit`), `vite build`, and
+   `bun build server` — if any of these fail the workflow stops.
+2. **Deploy job** (runs only on push to `main` after CI passes): SSHs into the server, pulls latest,
+   installs deps, runs Prisma migrations, builds frontend + server, and restarts PM2.
+
+**Required GitHub repo secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|---|---|
+| `DEPLOY_HOST` | Server hostname/IP |
+| `DEPLOY_USER` | SSH user for deploy |
+| `DEPLOY_SSH_KEY` | Private key contents (see below) |
+| `DEPLOY_PATH` | Absolute path to the project on the server (e.g. `/home/zwinglio-fast-kanban/htdocs/fast-kanban.zwinglio.com`) |
+| `DEPLOY_PORT` | SSH port (optional, defaults to 22) |
+
+**Generate a dedicated deploy key:**
+
+```bash
+ssh-keygen -t ed25519 -f deploy_key -N ""
+```
+
+Append `deploy_key.pub` to `~/.ssh/authorized_keys` on the server for the deploy user, then add the
+contents of `deploy_key` (the private key) as the `DEPLOY_SSH_KEY` repo secret.
+
+### Manual deploy (fallback)
+
+If GitHub Actions / SSH is unavailable, SSH in and run:
+
+```bash
+cd <deploy-path>
+git pull
+bun install --omit=dev
+bunx prisma generate
+bunx prisma migrate deploy
+bun run build
+bun run build:server
+pm2 restart fast-kanban
+```
 
 ## API overview
 

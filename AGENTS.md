@@ -19,6 +19,14 @@
 - `bun run db:generate` — regenerate Prisma client (also run automatically after `db:migrate`).
 - On CloudPanel (Node prod): set `DATABASE_URL` in the site env, run `npx prisma migrate deploy`,
   build both frontend and server, then `NODE_ENV=production node dist-server/index.js` (serves `dist/` + API).
+  The process is managed by **PM2** under the name `fast-kanban` — restart with `pm2 restart fast-kanban`.
+- **Auto-deploy:** pushing to `main` triggers `.github/workflows/ci-cd.yml` — CI (typecheck + both builds)
+  runs on every push/PR; deploy (SSH → pull → build → `pm2 restart`) runs only on push to `main` after CI
+  passes. Required repo secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`
+  (and `DEPLOY_PORT` if non-default). See README "Deploying to CloudPanel" for key setup.
+- **Manual fallback** (when Actions/SSH is unavailable): SSH in, `git pull`, `bun install --omit=dev`,
+  `bunx prisma generate`, `bunx prisma migrate deploy`, `bun run build`, `bun run build:server`,
+  `pm2 restart fast-kanban`.
 
 ## Verification
 - Typecheck: `bunx vue-tsc --noEmit`

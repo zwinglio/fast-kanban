@@ -1,0 +1,50 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "mysql://dummy:dummy@localhost:3306/dummy"
+      SHADOW_DATABASE_URL: "mysql://dummy:dummy@localhost:3306/dummy_shadow"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+
+      - run: bunx prisma generate
+
+      - run: bunx vue-tsc --noEmit
+
+      - run: bun run build
+
+      - run: bun run build:server
+
+  deploy:
+    name: Deploy to CloudPanel
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }} && \
+            git pull && \
+            bun install --omit=dev && \
+            bunx prisma generate && \
+            bunx prisma migrate deploy && \
+            bun run build && \
+            bun run build:server && \
+            pm2 restart fast-kanban
