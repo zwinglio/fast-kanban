@@ -181,6 +181,31 @@ function onTagCreated(tag: Tag) {
   }
 }
 
+function onTagRenamed(tag: Tag) {
+  boardTags.value = boardTags.value
+    .map((t) => (t.id === tag.id ? tag : t))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const s of STATUSES) {
+    for (const card of columns[s.key]) {
+      card.tags = card.tags.map((t) => (t.id === tag.id ? tag : t));
+    }
+  }
+}
+
+function onTagDeleted(id: number) {
+  boardTags.value = boardTags.value.filter((t) => t.id !== id);
+  if (activeTagIds.value.has(id)) {
+    const next = new Set(activeTagIds.value);
+    next.delete(id);
+    activeTagIds.value = next;
+  }
+  for (const s of STATUSES) {
+    for (const card of columns[s.key]) {
+      card.tags = card.tags.filter((t) => t.id !== id);
+    }
+  }
+}
+
 async function copyKey() {
   try {
     await navigator.clipboard.writeText(newKeyValue.value);
@@ -269,7 +294,7 @@ const shareUrl = computed(() => window.location.href);
         </div>
       </div>
 
-      <div v-if="boardTags.length || filterActive" class="filter-bar">
+      <div class="filter-bar">
         <div class="filter-inner">
           <div v-if="boardTags.length" class="filter-group">
             <span class="filter-label">Tags</span>
@@ -347,6 +372,8 @@ const shareUrl = computed(() => window.location.href);
         @saved="onSaved"
         @deleted="onDeleted"
         @tag-created="onTagCreated"
+        @tag-renamed="onTagRenamed"
+        @tag-deleted="onTagDeleted"
       />
     </template>
   </div>

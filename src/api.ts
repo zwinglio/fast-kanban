@@ -106,4 +106,11 @@ export function deleteTag(boardId: string, tagId: number) {
   return request<{ ok: true }>(`/tags/${tagId}`, { method: "DELETE" }, boardId);
 }
 
+export function renameTag(boardId: string, tagId: number, name: string) {
+  return request<Tag>(`/tags/${tagId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  }, boardId);
+}
+
 export { ApiError };
