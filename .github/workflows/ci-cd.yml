@@ -49,4 +49,4 @@ jobs:
             bunx prisma migrate deploy && \
             bun run build && \
             bun run build:server && \
-            pm2 restart fast-kanban
+            NODE_ENV=production pm2 restart fast-kanban --update-env
