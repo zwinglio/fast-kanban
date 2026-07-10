@@ -275,7 +275,7 @@ async function onSettingsChanged() {
           <button v-if="readOnly" class="btn secondary" @click="showKeyEntry = true">
             Enter edit key
           </button>
-          <button v-if="!readOnly" class="theme-toggle" type="button" title="Board settings" @click="showSettings = true">
+          <button v-if="!readOnly" class="icon-btn" type="button" title="Board settings" @click="showSettings = true">
             ⚙️
           </button>
           <ThemeToggle />
