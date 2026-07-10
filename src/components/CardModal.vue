@@ -177,7 +177,7 @@ async function remove() {
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
+  <div class="overlay">
     <div class="modal">
       <div class="modal-header">
         <span class="card-id">{{ displayId }}</span>
