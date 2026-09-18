@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import type { Column, Priority, Tag } from "../api";
 import PriorityIcon from "./PriorityIcon.vue";
+import type { ArchiveView } from "../lib/archive";
 
 const props = defineProps<{
   tags: Tag[];
@@ -13,6 +14,9 @@ const props = defineProps<{
   priorityIds: Set<number>;
   priorityCounts: Record<number, number>;
   noPriorityId: number;
+  archiveView: ArchiveView;
+  archivedCount: number;
+  activeCount: number;
   cardCounts: Record<number, number>;
   shownCount: number;
   totalCount: number;
@@ -24,9 +28,11 @@ const emit = defineEmits<{
   "update:columnIds": [ids: Set<number>];
   "update:query": [query: string];
   "update:priorityIds": [ids: Set<number>];
+  "update:archiveView": [view: ArchiveView];
 }>();
 
-const openMenu = ref<"tags" | "priorities" | "columns" | null>(null);
+type Menu = "tags" | "priorities" | "columns" | "archive";
+const openMenu = ref<Menu | null>(null);
 const tagQuery = ref("");
 const root = ref<HTMLElement | null>(null);
 const tagSearchEl = ref<HTMLInputElement | null>(null);
@@ -49,7 +55,7 @@ const tagSummary = computed(() => {
 const prioritiesActive = computed(() => props.priorityIds.size > 0);
 const noPriorityCount = computed(() => {
   const withPriority = Object.values(props.priorityCounts).reduce((a, b) => a + b, 0);
-  return Math.max(0, props.totalCount - withPriority);
+  return Math.max(0, props.activeCount - withPriority);
 });
 const prioritySummary = computed(() => {
   const names = props.priorities.filter((p) => props.priorityIds.has(p.id)).map((p) => p.name);
@@ -57,9 +63,32 @@ const prioritySummary = computed(() => {
   if (names.length <= 2) return names.join(", ");
   return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
 });
+const ARCHIVE_OPTIONS: { value: ArchiveView; label: string; hint: string }[] = [
+  { value: "active", label: "Active cards", hint: "Hide archived cards" },
+  { value: "archived", label: "Archived only", hint: "Review what was put away" },
+  { value: "all", label: "All cards", hint: "Active and archived together" },
+];
+const archiveActive = computed(() => props.archiveView !== "active");
+const archiveSummary = computed(() => (props.archiveView === "archived" ? "Only archived" : "Included"));
+const countNoun = computed(() => {
+  if (props.archiveView === "archived") return props.totalCount === 1 ? "archived card" : "archived cards";
+  return props.totalCount === 1 ? "card" : "cards";
+});
+
+function archiveOptionCount(view: ArchiveView) {
+  if (view === "active") return props.activeCount;
+  if (view === "archived") return props.archivedCount;
+  return props.activeCount + props.archivedCount;
+}
+
+function setArchiveView(view: ArchiveView) {
+  emit("update:archiveView", view);
+  openMenu.value = null;
+}
+
 const columnSummary = computed(() => `${props.columnIds.size} of ${props.columns.length}`);
 
-function toggleMenu(menu: "tags" | "priorities" | "columns") {
+function toggleMenu(menu: Menu) {
   openMenu.value = openMenu.value === menu ? null : menu;
   if (openMenu.value === "tags") {
     tagQuery.value = "";
@@ -125,6 +154,7 @@ function isTypingTarget(el: EventTarget | null) {
 }
 
 function clearAll() {
+  emit("update:archiveView", "active");
   clearTags();
   clearPriorities();
   showAllColumns();
@@ -379,6 +409,65 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+
+      <!-- Archive -->
+      <div class="filter-pop">
+        <div class="trigger" :class="{ active: archiveActive, open: openMenu === 'archive' }">
+          <button
+            type="button"
+            class="trigger-main"
+            aria-haspopup="listbox"
+            :aria-expanded="openMenu === 'archive'"
+            @click="toggleMenu('archive')"
+          >
+            <svg class="trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="5" rx="1.5" />
+              <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+            </svg>
+            <span class="trigger-label">Archived</span>
+            <template v-if="archiveActive">
+              <span class="trigger-sep" aria-hidden="true" />
+              <span class="trigger-value">{{ archiveSummary }}</span>
+            </template>
+            <span v-else-if="archivedCount" class="trigger-count">{{ archivedCount }}</span>
+          </button>
+          <button
+            v-if="archiveActive"
+            type="button"
+            class="trigger-clear"
+            aria-label="Hide archived cards"
+            @click="setArchiveView('active')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <div v-if="openMenu === 'archive'" class="menu">
+          <ul class="menu-list" role="listbox">
+            <li v-for="opt in ARCHIVE_OPTIONS" :key="opt.value">
+              <button
+                type="button"
+                class="menu-opt two-line"
+                role="option"
+                :aria-selected="archiveView === opt.value"
+                @click="setArchiveView(opt.value)"
+              >
+                <span class="radio" aria-hidden="true" />
+                <span class="opt-text">
+                  <span class="opt-name">{{ opt.label }}</span>
+                  <span class="opt-hint">{{ opt.hint }}</span>
+                </span>
+                <span class="opt-count">{{ archiveOptionCount(opt.value) }}</span>
+              </button>
+            </li>
+          </ul>
+          <div class="menu-foot">
+            <span>Archive cards from the card view</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="filter-right">
@@ -386,8 +475,8 @@ onBeforeUnmount(() => {
         class="filter-count"
         :title="filterActive ? 'Drag and drop is paused while filters are on' : undefined"
       >
-        <template v-if="filterActive"><b>{{ shownCount }}</b> of {{ totalCount }} cards</template>
-        <template v-else>{{ totalCount }} {{ totalCount === 1 ? "card" : "cards" }}</template>
+        <template v-if="filterActive"><b>{{ shownCount }}</b> of {{ totalCount }} {{ countNoun }}</template>
+        <template v-else>{{ totalCount }} {{ countNoun }}</template>
       </span>
       <button v-if="filterActive" type="button" class="clear-all" @click="clearAll">Clear filters</button>
       <div class="search" :class="{ filled: !!query }">
@@ -692,6 +781,50 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.trigger-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+.trigger.active .trigger-icon {
+  color: var(--accent);
+}
+.trigger-count {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--soft);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+.menu-opt.two-line {
+  align-items: flex-start;
+}
+.menu-opt.two-line .radio,
+.menu-opt.two-line .opt-count {
+  margin-top: 2px;
+}
+.radio {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.menu-opt[aria-selected="true"] .radio {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 3.5px var(--panel), inset 0 0 0 8px var(--accent);
+}
+.opt-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.opt-hint {
+  font-size: 12px;
+  color: var(--muted);
 }
 .opt-name.muted {
   color: var(--muted);

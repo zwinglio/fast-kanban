@@ -11,6 +11,7 @@ defineProps<{
   cardCount: number;
   columnCount: number;
   tagCount: number;
+  archivedCount: number;
 }>();
 
 function plural(n: number, word: string) {
@@ -41,6 +42,10 @@ const emit = defineEmits<{
           <span>{{ plural(columnCount, "column") }}</span>
           <span class="tb-dot" aria-hidden="true" />
           <span>{{ plural(tagCount, "tag") }}</span>
+          <template v-if="archivedCount">
+            <span class="tb-dot" aria-hidden="true" />
+            <span>{{ archivedCount }} archived</span>
+          </template>
           <span v-if="readOnly" class="tb-ro" title="You can view this board but not change it">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="5" y="11" width="14" height="10" rx="2" />

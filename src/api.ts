@@ -31,6 +31,7 @@ export interface Card {
   columnId: number;
   priorityId: number | null;
   position: number;
+  archivedAt: string | null;
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
@@ -112,6 +113,7 @@ export function updateCard(
     priorityId: number | null;
     position: number;
     tagIds: number[];
+    archived: boolean;
   }>
 ) {
   return request<Card>(`/cards/${cardId}`, {

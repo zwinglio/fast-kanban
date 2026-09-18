@@ -44,7 +44,7 @@ const updatedLabel = computed(() => {
 <template>
   <div
     class="card-tile"
-    :class="`d-${density}`"
+    :class="[`d-${density}`, { 'is-archived': card.archivedAt }]"
     role="button"
     tabindex="0"
     @click="$emit('open')"
@@ -53,6 +53,13 @@ const updatedLabel = computed(() => {
     <div class="card-top">
       <span class="card-id">{{ displayId }}</span>
       <span class="card-signals">
+        <span v-if="card.archivedAt" class="archived-chip" title="Archived">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="5" rx="1.5" />
+            <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+          </svg>
+          <span v-if="density !== 'compact'">Archived</span>
+        </span>
         <span v-if="hasBody && density !== 'comfortable'" class="has-body" title="Has description" aria-label="Has description">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 6h16M4 12h16M4 18h10" />
@@ -121,6 +128,28 @@ const updatedLabel = computed(() => {
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--accent);
+}
+
+.card-tile.is-archived {
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  border-style: dashed;
+  box-shadow: none;
+}
+.card-tile.is-archived .card-title,
+.card-tile.is-archived .card-tags {
+  opacity: 0.7;
+}
+.archived-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.archived-chip svg {
+  width: 12px;
+  height: 12px;
 }
 
 .card-signals {

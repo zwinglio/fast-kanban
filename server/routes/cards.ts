@@ -74,6 +74,27 @@ cards.patch("/:id", async (c) => {
     }
   }
 
+  // archived: true stamps archivedAt; false restores the card to the end of its column.
+  if (body.archived !== undefined) {
+    if (typeof body.archived !== "boolean") {
+      return c.json({ error: "Invalid archived flag" }, 400);
+    }
+    if (body.archived) {
+      if (!check.card.archivedAt) data.archivedAt = new Date();
+    } else if (check.card.archivedAt) {
+      data.archivedAt = null;
+      if (body.position === undefined) {
+        const targetColumnId = (data.columnId as number | undefined) ?? check.card.columnId;
+        const last = await prisma.card.findFirst({
+          where: { columnId: targetColumnId, archivedAt: null },
+          orderBy: { position: "desc" },
+          select: { position: true },
+        });
+        data.position = last ? last.position + 1 : 0;
+      }
+    }
+  }
+
   // When tagIds is present, replace the card's tag set (only with tags owned by this board).
   if (Array.isArray(body.tagIds)) {
     const tagIds = body.tagIds.filter((t: unknown): t is number => Number.isInteger(t));

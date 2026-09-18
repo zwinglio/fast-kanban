@@ -31,6 +31,8 @@ const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
 // Description opens straight into edit mode; read-only viewers only ever see the preview.
 const mode = ref<"edit" | "preview">(props.readOnly ? "preview" : "edit");
 const saving = ref(false);
+const archiving = ref(false);
+const isArchived = computed(() => !!props.card?.archivedAt);
 const deleting = ref(false);
 const confirmingDelete = ref(false);
 const confirmingDiscard = ref(false);
@@ -85,7 +87,7 @@ function removeTag(id: number) {
 
 const PLACEHOLDER_TITLE = "Untitled";
 
-async function save(opts: { usePlaceholder?: boolean } = {}) {
+async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {}) {
   if (saving.value) return;
   error.value = "";
   const trimmedTitle = title.value.trim() || (opts.usePlaceholder ? PLACEHOLDER_TITLE : "");
@@ -112,6 +114,7 @@ async function save(opts: { usePlaceholder?: boolean } = {}) {
         columnId: columnId.value,
         priorityId: priorityId.value,
         tagIds: selectedTagIds.value,
+        ...(opts.archived !== undefined ? { archived: opts.archived } : {}),
       });
       emit("saved", updated);
     }
@@ -140,6 +143,17 @@ function handleBackdrop() {
     return;
   }
   save({ usePlaceholder: true });
+}
+
+// Archiving also saves any pending edits, then closes the modal.
+async function setArchived(archived: boolean) {
+  if (isNew || archiving.value) return;
+  archiving.value = true;
+  try {
+    await save({ archived });
+  } finally {
+    archiving.value = false;
+  }
 }
 
 async function remove() {
@@ -199,6 +213,13 @@ onBeforeUnmount(() => {
       <div class="m-head">
         <div class="m-head-left">
           <span class="key">{{ displayId }}</span>
+          <span v-if="isArchived" class="archived-pill">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="5" rx="1.5" />
+              <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+            </svg>
+            Archived
+          </span>
           <span class="crumb">
             <template v-if="boardTitle">{{ boardTitle }} <b>/</b> </template>{{ currentColumn?.name ?? "" }}
           </span>
@@ -336,7 +357,24 @@ onBeforeUnmount(() => {
               </button>
               <button type="button" class="no" @click="confirmingDelete = false">Cancel</button>
             </div>
-            <button v-else type="button" class="btn-ghost-danger" @click="confirmingDelete = true">Delete card</button>
+            <div v-else class="foot-left">
+              <button
+                type="button"
+                class="btn-ghost"
+                :disabled="archiving || saving"
+                @click="setArchived(!isArchived)"
+              >
+                <svg v-if="isArchived" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="5" rx="1.5" />
+                  <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+                </svg>
+                {{ isArchived ? "Restore" : archiving ? "Archiving..." : "Archive" }}
+              </button>
+              <button type="button" class="btn-ghost-danger" @click="confirmingDelete = true">Delete card</button>
+            </div>
           </template>
         </div>
 
@@ -831,6 +869,51 @@ onBeforeUnmount(() => {
   color: var(--warning-text);
 }
 .dirty .dot { background: currentColor; }
+.archived-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.archived-pill svg {
+  width: 12px;
+  height: 12px;
+}
+.foot-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--soft);
+}
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-ghost svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
 .btn-ghost-danger {
   background: none;
   border: 0;

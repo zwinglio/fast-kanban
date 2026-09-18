@@ -14,6 +14,7 @@ import FilterBar from "../components/FilterBar.vue";
 import BoardHeader from "../components/BoardHeader.vue";
 import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
+import type { ArchiveView } from "../lib/archive";
 
 const route = useRoute();
 const boardId = route.params.id as string;
@@ -23,7 +24,8 @@ const loading = ref(true);
 const loadError = ref("");
 
 const boardColumns = ref<Column[]>([]);
-const columns = reactive<Record<number, Card[]>>({});
+const columns = reactive<Record<number, Card[]>>({}); // active cards only, in drag order
+const archivedCards = ref<Card[]>([]);
 
 const boardTags = ref<Tag[]>([]);
 const boardPriorities = ref<Priority[]>([]);
@@ -31,6 +33,7 @@ const activeTagIds = ref<Set<number>>(new Set());
 const activePriorityIds = ref<Set<number>>(new Set()); // NO_PRIORITY = cards without one
 const activeColumnIds = ref<Set<number>>(new Set());
 const searchQuery = ref("");
+const archiveView = ref<ArchiveView>("active");
 
 const readOnly = ref(true);
 const showNewKeyBanner = ref(route.query.newKey === "1");
@@ -62,7 +65,9 @@ function fillColumns(cards: Card[]) {
   for (const col of boardColumns.value) {
     columns[col.id] = [];
   }
+  archivedCards.value = cards.filter((c) => c.archivedAt);
   for (const card of cards) {
+    if (card.archivedAt) continue;
     if (!columns[card.columnId]) columns[card.columnId] = [];
     columns[card.columnId].push(card);
   }
@@ -73,20 +78,27 @@ function fillColumns(cards: Card[]) {
   }
 }
 
-function cardCountsByPriority(): Record<number, number> {
+function activeCards(): Card[] {
+  return boardColumns.value.flatMap((col) => columns[col.id] ?? []);
+}
+
+// Settings pass includeArchived: archived cards still hold their column and priority.
+function cardCountsByPriority(includeArchived = false): Record<number, number> {
   const counts: Record<number, number> = {};
-  for (const col of boardColumns.value) {
-    for (const card of columns[col.id] ?? []) {
-      if (card.priorityId !== null) counts[card.priorityId] = (counts[card.priorityId] ?? 0) + 1;
-    }
+  const pool = includeArchived ? [...activeCards(), ...archivedCards.value] : activeCards();
+  for (const card of pool) {
+    if (card.priorityId !== null) counts[card.priorityId] = (counts[card.priorityId] ?? 0) + 1;
   }
   return counts;
 }
 
-function cardCountsByColumn(): Record<number, number> {
+function cardCountsByColumn(includeArchived = false): Record<number, number> {
   const counts: Record<number, number> = {};
   for (const col of boardColumns.value) {
     counts[col.id] = columns[col.id]?.length ?? 0;
+  }
+  if (includeArchived) {
+    for (const card of archivedCards.value) counts[card.columnId] = (counts[card.columnId] ?? 0) + 1;
   }
   return counts;
 }
@@ -158,24 +170,29 @@ function closeModal() {
   modalState.value = null;
 }
 
-function onSaved(card: Card) {
-  for (const col of boardColumns.value) {
-    if (columns[col.id]) {
-      columns[col.id] = columns[col.id].filter((c) => c.id !== card.id);
-    }
-  }
-  if (!columns[card.columnId]) columns[card.columnId] = [];
-  columns[card.columnId].push(card);
-  columns[card.columnId].sort((a, b) => a.position - b.position);
-  closeModal();
-}
-
-function onDeleted(id: number) {
+function removeCardLocally(id: number) {
   for (const col of boardColumns.value) {
     if (columns[col.id]) {
       columns[col.id] = columns[col.id].filter((c) => c.id !== id);
     }
   }
+  archivedCards.value = archivedCards.value.filter((c) => c.id !== id);
+}
+
+function onSaved(card: Card) {
+  removeCardLocally(card.id);
+  closeModal();
+  if (card.archivedAt) {
+    archivedCards.value = [...archivedCards.value, card];
+    return;
+  }
+  if (!columns[card.columnId]) columns[card.columnId] = [];
+  columns[card.columnId].push(card);
+  columns[card.columnId].sort((a, b) => a.position - b.position);
+}
+
+function onDeleted(id: number) {
+  removeCardLocally(id);
   closeModal();
 }
 
@@ -201,6 +218,7 @@ const filterActive = computed(
   () =>
     activeTagIds.value.size > 0 ||
     activePriorityIds.value.size > 0 ||
+    archiveView.value !== "active" ||
     activeColumnIds.value.size < boardColumns.value.length ||
     searchTerms.value.length > 0
 );
@@ -231,10 +249,23 @@ function cardMatchesFilters(card: Card): boolean {
 
 const filteredColumns = computed<Record<number, Card[]>>(() => {
   const out: Record<number, Card[]> = {};
+  const showActive = archiveView.value !== "archived";
+  const showArchived = archiveView.value !== "active";
   for (const col of boardColumns.value) {
-    out[col.id] = (columns[col.id] ?? []).filter(cardMatchesFilters);
+    const active = showActive ? columns[col.id] ?? [] : [];
+    const archived = showArchived ? archivedCards.value.filter((c) => c.columnId === col.id) : [];
+    out[col.id] = [...active, ...archived].filter(cardMatchesFilters);
   }
   return out;
+});
+
+// Cards in the current archive view, before the other filters ("12 of <this>").
+const viewPoolCount = computed(() => {
+  const active = totalCards.value;
+  const archived = archivedCards.value.length;
+  if (archiveView.value === "archived") return archived;
+  if (archiveView.value === "all") return active + archived;
+  return active;
 });
 
 const totalCards = computed(() =>
@@ -337,6 +368,7 @@ function onBoardSaved(updated: Board) {
         :prefix="board.prefix"
         :read-only="readOnly"
         :card-count="totalCards"
+        :archived-count="archivedCards.length"
         :column-count="boardColumns.length"
         :tag-count="boardTags.length"
         @enter-key="showKeyEntry = true"
@@ -401,7 +433,10 @@ function onBoardSaved(updated: Board) {
         :columns="boardColumns"
         :card-counts="cardCountsByColumn()"
         :shown-count="totalMatching"
-        :total-count="totalCards"
+        :total-count="viewPoolCount"
+        v-model:archive-view="archiveView"
+        :archived-count="archivedCards.length"
+        :active-count="totalCards"
         :filter-active="filterActive"
       />
 
@@ -445,7 +480,7 @@ function onBoardSaved(updated: Board) {
         v-if="activePanel === 'columns'"
         :board-id="boardId"
         :columns="boardColumns"
-        :card-counts="cardCountsByColumn()"
+        :card-counts="cardCountsByColumn(true)"
         @close="activePanel = null"
         @changed="onSettingsChanged"
       />
@@ -454,7 +489,7 @@ function onBoardSaved(updated: Board) {
         v-if="activePanel === 'priorities'"
         :board-id="boardId"
         :priorities="boardPriorities"
-        :card-counts="cardCountsByPriority()"
+        :card-counts="cardCountsByPriority(true)"
         @close="activePanel = null"
         @changed="onSettingsChanged"
       />
