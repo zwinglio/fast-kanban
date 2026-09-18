@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { updateBoard, ApiError, type Board } from "../api";
 import { DENSITIES, type Density } from "../lib/density";
 import ModalShell from "./ModalShell.vue";
@@ -9,6 +9,8 @@ const props = defineProps<{
   title: string;
   prefix: string;
   density: Density;
+  nextSeq: number;
+  highestSeq: number; // highest card number in use, archived cards included
 }>();
 
 const emit = defineEmits<{
@@ -19,6 +21,14 @@ const emit = defineEmits<{
 
 const title = ref(props.title);
 const density = ref<Density>(props.density);
+// The stored counter can lag behind if cards were created in this session.
+const currentNext = Math.max(props.nextSeq, props.highestSeq + 1);
+const nextSeq = ref<number | "">(currentNext);
+const minNext = props.highestSeq + 1;
+const MAX_SEQ = 999_999;
+const nextValid = computed(
+  () => Number.isInteger(nextSeq.value) && (nextSeq.value as number) >= minNext && (nextSeq.value as number) <= MAX_SEQ
+);
 const saving = ref(false);
 const error = ref("");
 const titleEl = ref<HTMLInputElement | null>(null);
@@ -31,15 +41,23 @@ async function save() {
     error.value = "Title is required (max 255 chars)";
     return;
   }
+  if (!nextValid.value) {
+    error.value = `Next card number must be between ${minNext} and ${MAX_SEQ.toLocaleString()}`;
+    return;
+  }
   if (density.value !== props.density) emit("update:density", density.value);
-  if (trimmed === props.title) {
+
+  const patch: { title?: string; nextSeq?: number } = {};
+  if (trimmed !== props.title) patch.title = trimmed;
+  if (nextSeq.value !== currentNext) patch.nextSeq = nextSeq.value as number;
+  if (!Object.keys(patch).length) {
     emit("close");
     return;
   }
   saving.value = true;
   error.value = "";
   try {
-    const updated = await updateBoard(props.boardId, { title: trimmed });
+    const updated = await updateBoard(props.boardId, patch);
     emit("saved", updated);
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "Failed to save board";
@@ -69,10 +87,33 @@ async function save() {
 
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <span class="sheet-label">Prefix</span>
+        <label class="sheet-label" for="next-seq">Card numbering</label>
+        <span class="sheet-key" title="Card ID prefix — can't be changed">{{ prefix }}</span>
       </div>
-      <span class="sheet-key">{{ prefix }}</span>
-      <p class="sheet-note">Used in card IDs like <b>{{ prefix }}-12</b>. It can't be changed.</p>
+      <div class="seq-row" :class="{ invalid: !nextValid }">
+        <span class="seq-prefix">{{ prefix }}-</span>
+        <input
+          id="next-seq"
+          v-model.number="nextSeq"
+          type="number"
+          class="seq-input"
+          :min="minNext"
+          :max="MAX_SEQ"
+          step="1"
+          inputmode="numeric"
+          aria-describedby="next-seq-note"
+          @keydown.enter.prevent="save"
+        />
+        <span class="seq-caption">next card</span>
+      </div>
+      <p id="next-seq-note" class="sheet-note">
+        <template v-if="nextValid">
+          New cards continue from <b>{{ prefix }}-{{ nextSeq }}</b>.
+          <template v-if="highestSeq">Must stay above {{ prefix }}-{{ highestSeq }}, the highest ID in use.</template>
+          <template v-else>Set it to keep the numbering from a previous project.</template>
+        </template>
+        <template v-else>Use a whole number from {{ minNext }} to {{ MAX_SEQ.toLocaleString() }} so no ID is reused.</template>
+      </p>
     </section>
 
     <section class="sheet-section">
@@ -123,6 +164,51 @@ async function save() {
 </template>
 
 <style scoped>
+.seq-row {
+  display: flex;
+  align-items: center;
+  max-width: 300px;
+  min-height: 36px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.15s ease;
+}
+.seq-row:focus-within {
+  border-color: var(--accent);
+}
+.seq-row.invalid {
+  border-color: var(--danger);
+}
+.seq-prefix {
+  padding-left: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.seq-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.seq-input:focus {
+  outline: none;
+}
+.seq-caption {
+  padding-right: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .density-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

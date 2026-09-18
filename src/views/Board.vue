@@ -259,6 +259,11 @@ const filteredColumns = computed<Record<number, Card[]>>(() => {
   return out;
 });
 
+// Highest card number on the board (archived included); the next ID must stay above it.
+const highestSeq = computed(() =>
+  [...activeCards(), ...archivedCards.value].reduce((max, c) => Math.max(max, c.seq), 0)
+);
+
 // Cards in the current archive view, before the other filters ("12 of <this>").
 const viewPoolCount = computed(() => {
   const active = totalCards.value;
@@ -510,6 +515,8 @@ function onBoardSaved(updated: Board) {
         :title="board.title"
         :prefix="board.prefix"
         :density="density"
+        :next-seq="board.nextSeq"
+        :highest-seq="highestSeq"
         @close="activePanel = null"
         @saved="onBoardSaved"
         @update:density="onDensityChange"

@@ -41,6 +41,7 @@ export interface Board {
   id: string;
   title: string;
   prefix: string;
+  nextSeq: number; // number the next created card will get
 }
 
 class ApiError extends Error {
@@ -69,10 +70,10 @@ async function request<T>(
   return data as T;
 }
 
-export function createBoard(title: string, prefix: string) {
+export function createBoard(title: string, prefix: string, startAt?: number) {
   return request<{ id: string; editKey: string }>("/boards", {
     method: "POST",
-    body: JSON.stringify({ title, prefix }),
+    body: JSON.stringify({ title, prefix, ...(startAt !== undefined ? { startAt } : {}) }),
   });
 }
 
@@ -80,7 +81,7 @@ export function getBoard(id: string) {
   return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[]; priorities: Priority[] }>(`/boards/${id}`);
 }
 
-export function updateBoard(boardId: string, patch: { title: string }) {
+export function updateBoard(boardId: string, patch: Partial<{ title: string; nextSeq: number }>) {
   return request<Board>(`/boards/${boardId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),

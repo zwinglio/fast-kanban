@@ -14,6 +14,18 @@ const nanoidKey = customAlphabet(
 
 export const boards = new Hono();
 
+// Card numbers can start (or continue) above 1 for teams migrating from another tracker.
+const MAX_SEQ = 999_999;
+
+function parseSeq(value: unknown): number | null {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= MAX_SEQ ? n : null;
+}
+
+function publicBoard(board: { id: string; title: string; prefix: string; nextSeq: number }) {
+  return { id: board.id, title: board.title, prefix: board.prefix, nextSeq: board.nextSeq };
+}
+
 // POST /api/boards - create a board
 boards.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -26,6 +38,14 @@ boards.post("/", async (c) => {
   if (!isValidPrefix(prefix)) {
     return c.json({ error: "Prefix must be 1-16 uppercase alphanumeric chars" }, 400);
   }
+  let startAt = 1;
+  if (body?.startAt !== undefined && body.startAt !== null) {
+    const parsed = parseSeq(body.startAt);
+    if (parsed === null) {
+      return c.json({ error: `Starting number must be a whole number from 1 to ${MAX_SEQ}` }, 400);
+    }
+    startAt = parsed;
+  }
 
   const id = nanoidId();
   const editKey = nanoidKey();
@@ -37,6 +57,7 @@ boards.post("/", async (c) => {
       title,
       prefix,
       editHash,
+      nextSeq: startAt,
       columns: {
         create: DEFAULT_COLUMNS,
       },
@@ -76,7 +97,7 @@ boards.get("/:id", async (c) => {
   ]);
 
   return c.json({
-    board: { id: board.id, title: board.title, prefix: board.prefix },
+    board: publicBoard(board),
     cards,
     tags,
     columns,
@@ -84,23 +105,43 @@ boards.get("/:id", async (c) => {
   });
 });
 
-// PATCH /api/boards/:id - update board fields (currently title) (edit-key protected)
+// PATCH /api/boards/:id - update title and/or the next card number (edit-key protected)
 boards.patch("/:id", requireEditKey, async (c) => {
   const boardId = c.req.param("id");
   if (!boardId) return c.json({ error: "Missing board id" }, 400);
   const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "Invalid body" }, 400);
 
-  const title = typeof body?.title === "string" ? body.title.trim() : "";
-  if (!title || title.length > 255) {
-    return c.json({ error: "Title is required (max 255 chars)" }, 400);
+  const data: { title?: string; nextSeq?: number } = {};
+
+  if (body.title !== undefined) {
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title || title.length > 255) {
+      return c.json({ error: "Title is required (max 255 chars)" }, 400);
+    }
+    data.title = title;
   }
 
-  const board = await prisma.board.update({
-    where: { id: boardId },
-    data: { title },
-  });
+  if (body.nextSeq !== undefined) {
+    const nextSeq = parseSeq(body.nextSeq);
+    if (nextSeq === null) {
+      return c.json({ error: `Next card number must be a whole number from 1 to ${MAX_SEQ}` }, 400);
+    }
+    // Never reuse an existing ID (archived cards included): seq is unique per board.
+    const { _max } = await prisma.card.aggregate({ where: { boardId }, _max: { seq: true } });
+    const highest = _max.seq ?? 0;
+    if (nextSeq <= highest) {
+      return c.json({ error: `Next card number must be higher than ${highest}, the highest ID in use` }, 400);
+    }
+    data.nextSeq = nextSeq;
+  }
 
-  return c.json({ id: board.id, title: board.title, prefix: board.prefix });
+  if (data.title === undefined && data.nextSeq === undefined) {
+    return c.json({ error: "Nothing to update" }, 400);
+  }
+
+  const board = await prisma.board.update({ where: { id: boardId }, data });
+  return c.json(publicBoard(board));
 });
 
 // GET /api/boards/:id/verify - check whether a supplied X-Edit-Key is valid
