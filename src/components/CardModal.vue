@@ -127,9 +127,12 @@ async function addTag() {
   }
 }
 
-async function save() {
+const PLACEHOLDER_TITLE = "Untitled";
+
+async function save(opts: { usePlaceholder?: boolean } = {}) {
+  if (saving.value) return;
   error.value = "";
-  const trimmedTitle = title.value.trim();
+  const trimmedTitle = title.value.trim() || (opts.usePlaceholder ? PLACEHOLDER_TITLE : "");
   if (!trimmedTitle) {
     error.value = "Title is required";
     return;
@@ -160,6 +163,18 @@ async function save() {
   }
 }
 
+const backdropArmed = ref(false);
+
+function handleBackdrop() {
+  if (!backdropArmed.value) return;
+  backdropArmed.value = false;
+  if (props.readOnly) {
+    emit("close");
+    return;
+  }
+  save({ usePlaceholder: true });
+}
+
 async function remove() {
   if (!props.card) return;
   if (!confirm("Delete this card? This cannot be undone.")) return;
@@ -177,7 +192,7 @@ async function remove() {
 </script>
 
 <template>
-  <div class="overlay">
+  <div class="overlay" @mousedown.self="backdropArmed = true" @click.self="handleBackdrop">
     <div class="modal">
       <div class="modal-header">
         <span class="card-id">{{ displayId }}</span>
@@ -295,7 +310,7 @@ async function remove() {
         </button>
         <div class="spacer" />
         <button class="btn secondary" @click="emit('close')">Cancel</button>
-        <button class="btn" :disabled="saving" @click="save">
+        <button class="btn" :disabled="saving" @click="save()">
           {{ saving ? "Saving..." : "Save" }}
         </button>
       </div>
