@@ -14,6 +14,8 @@ defineProps<{
   columnCount: number;
   tagCount: number;
   archivedCount: number;
+  liveStatus: "connecting" | "live" | "offline";
+  viewers: number;
 }>();
 
 function plural(n: number, word: string) {
@@ -70,6 +72,30 @@ const emit = defineEmits<{
     </div>
 
     <div class="tb-right">
+      <span
+        class="live"
+        :class="`is-${liveStatus}`"
+        :title="
+          liveStatus === 'live'
+            ? `Live — changes from others appear automatically. ${viewers} ${viewers === 1 ? 'tab has' : 'tabs have'} this board open.`
+            : liveStatus === 'connecting'
+              ? 'Reconnecting… changes will sync when the connection is back.'
+              : 'Offline — reload the page to see the latest changes.'
+        "
+      >
+        <span class="live-dot" aria-hidden="true" />
+        <template v-if="liveStatus === 'live'">
+          <span class="live-label">Live</span>
+          <span v-if="viewers > 1" class="viewers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+            </svg>
+            {{ viewers }}<span class="sr-only"> viewing</span>
+          </span>
+        </template>
+        <span v-else class="live-label">{{ liveStatus === "connecting" ? "Reconnecting…" : "Offline" }}</span>
+      </span>
+      <span class="tb-divider" aria-hidden="true" />
       <button
         v-if="readOnly"
         class="tb-unlock"
@@ -191,6 +217,71 @@ button.brand:focus-visible {
   height: 12px;
 }
 
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.live.is-live .live-dot {
+  background: var(--success-border);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-border) 60%, transparent);
+  animation: live-pulse 2.4s ease-out infinite;
+}
+.live.is-connecting .live-dot {
+  background: var(--warning-text);
+}
+.live.is-offline {
+  color: var(--danger);
+}
+.live.is-offline .live-dot {
+  background: var(--danger);
+}
+.viewers {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.viewers svg {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-border) 55%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live.is-live .live-dot { animation: none; }
+}
+
 .tb-right {
   display: flex;
   align-items: center;
@@ -231,6 +322,9 @@ button.brand:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .live-label {
+    display: none;
+  }
   .tb-left {
     gap: 10px;
   }

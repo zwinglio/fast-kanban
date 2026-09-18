@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "../db.js";
+import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
 import { isValidPaletteColor } from "../columns.js";
 
@@ -57,6 +58,7 @@ columns.patch("/:id", async (c) => {
     where: { id },
     data,
   });
+  notifyBoard(c, check.column.boardId, "board");
   return c.json(updated);
 });
 
@@ -79,5 +81,6 @@ columns.delete("/:id", async (c) => {
   }
 
   await prisma.column.delete({ where: { id } });
+  notifyBoard(c, check.column.boardId, "board");
   return c.json({ ok: true });
 });

@@ -16,6 +16,7 @@ import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
 import type { ArchiveView } from "../lib/archive";
 import { parseCardNumber } from "../lib/cardSearch";
+import { useLiveBoard } from "../lib/liveBoard";
 
 const route = useRoute();
 const router = useRouter();
@@ -190,6 +191,49 @@ function closeModal() {
   modalState.value = null;
   if (route.query.card !== undefined) router.replace({ query: queryWithCard(null) });
 }
+
+// ---- Live updates -------------------------------------------------------------------
+// Another tab changed the board: reload quietly (bursts are coalesced), but never while a
+// card is being dragged — that reload waits for the drop.
+const dragging = ref(false);
+const remoteNotice = ref("");
+let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+let reloadPending = false;
+
+function scheduleReload() {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(runReload, 250);
+}
+
+async function runReload() {
+  if (dragging.value) {
+    reloadPending = true;
+    return;
+  }
+  reloadPending = false;
+  const openId = modalState.value?.mode === "edit" ? modalState.value.card?.id : undefined;
+  await load({ quiet: true });
+  if (openId === undefined || modalState.value?.mode !== "edit") return;
+  // Hand the open modal the fresh card; it decides whether to apply it or ask first.
+  const fresh = allCards.value.find((c) => c.id === openId);
+  if (fresh) {
+    modalState.value = { ...modalState.value, card: fresh };
+  } else {
+    remoteNotice.value = `${board.value?.prefix}-${modalState.value.card?.seq} was deleted by someone else.`;
+    closeModal();
+  }
+}
+
+function onDragStart() {
+  dragging.value = true;
+}
+
+function onDragEnd() {
+  dragging.value = false;
+  if (reloadPending) scheduleReload();
+}
+
+const live = useLiveBoard(boardId, { onChange: scheduleReload, onResync: scheduleReload });
 
 function syncModalFromRoute() {
   const raw = route.query.card;
@@ -445,12 +489,21 @@ function onBoardSaved(updated: Board) {
         :archived-count="archivedCards.length"
         :column-count="boardColumns.length"
         :tag-count="boardTags.length"
+        :live-status="live.status.value"
+        :viewers="live.viewers.value"
         @enter-key="showKeyEntry = true"
         @open-columns="activePanel = 'columns'"
         @open-tags="activePanel = 'tags'"
         @open-priorities="activePanel = 'priorities'"
         @open-general="activePanel = 'general'"
       />
+
+      <div v-if="remoteNotice" class="remote-notice" role="status">
+        <span>{{ remoteNotice }}</span>
+        <button type="button" class="notice-dismiss" aria-label="Dismiss" @click="remoteNotice = ''">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
 
       <div v-if="showNewKeyBanner" class="key-banner" role="status">
         <span class="key-banner-icon" aria-hidden="true">
@@ -531,6 +584,8 @@ function onBoardSaved(updated: Board) {
           :points-enabled="board.pointsEnabled"
           :open-blockers="openBlockersByCard"
           @change="persistColumnOrder(col.id)"
+          @drag-start="onDragStart"
+          @drag-end="onDragEnd"
           @open="openCard"
           @add-card="openAddCard(col.id)"
         />
@@ -621,6 +676,39 @@ function onBoardSaved(updated: Board) {
   padding: 48px;
   text-align: center;
   color: var(--muted);
+}
+
+.remote-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid color-mix(in srgb, var(--warning-text) 30%, transparent);
+  border-radius: 12px;
+  font-size: 13.5px;
+}
+.remote-notice span {
+  flex: 1;
+}
+.notice-dismiss {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: inherit;
+}
+.notice-dismiss:hover {
+  background: color-mix(in srgb, var(--warning-text) 15%, transparent);
+}
+.notice-dismiss svg {
+  width: 11px;
+  height: 11px;
 }
 
 .key-banner {

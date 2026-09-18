@@ -25,6 +25,8 @@ const emit = defineEmits<{
   change: [];
   open: [card: CardType];
   addCard: [];
+  dragStart: [];
+  dragEnd: [];
 }>();
 </script>
 
@@ -60,6 +62,8 @@ const emit = defineEmits<{
       :animation="150"
       ghost-class="ghost-card"
       @change="emit('change')"
+      @start="emit('dragStart')"
+      @end="emit('dragEnd')"
     >
       <template #item="{ element }">
         <CardTile :card="element" :prefix="prefix" :density="density" :priorities="priorities" :points-enabled="pointsEnabled" :open-blockers="openBlockers[element.id] ?? []" @open="emit('open', element)" />

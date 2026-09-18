@@ -69,6 +69,9 @@ const activityKey = ref(0);
 const NEW_CARD_ID = -1;
 const selfId = props.card?.id ?? NEW_CARD_ID;
 const depDraft = ref<Dependency[]>([...props.dependencies]);
+// Links as they were when the card was opened (or last refreshed); Save applies only the
+// differences between this and the draft, so links changed by others in the meantime survive.
+let baseDeps: Dependency[] = [...props.dependencies];
 
 function ownLinks(list: Dependency[]) {
   return list
@@ -88,9 +91,60 @@ const titleEl = ref<HTMLTextAreaElement | null>(null);
 const bodyEl = ref<HTMLTextAreaElement | null>(null);
 const tagPickerEl = ref<HTMLElement | null>(null);
 
-const snapshot = JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort(), ownLinks(depDraft.value)]);
-const dirty = computed(
-  () => JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort(), ownLinks(depDraft.value)]) !== snapshot
+function draftSignature() {
+  return JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort(), ownLinks(depDraft.value)]);
+}
+const baseline = ref(draftSignature());
+const dirty = computed(() => draftSignature() !== baseline.value);
+
+// ---- Live updates: the board reloads when someone else changes it, handing this modal a
+// fresh `card`/`dependencies`. Apply it quietly when nothing is being edited; otherwise ask.
+function remoteSignature() {
+  const c = props.card;
+  if (!c) return "";
+  return JSON.stringify([
+    c.title,
+    c.body ?? "",
+    c.columnId,
+    c.priorityId,
+    c.points,
+    (c.tags ?? []).map((t) => t.id).sort(),
+    ownLinks(props.dependencies),
+    c.archivedAt,
+  ]);
+}
+let seenRemote = remoteSignature();
+const remoteChanged = ref(false);
+
+function applyLatest() {
+  const c = props.card;
+  if (!c) return;
+  title.value = c.title;
+  body.value = c.body ?? "";
+  columnId.value = c.columnId;
+  priorityId.value = c.priorityId;
+  points.value = c.points;
+  selectedTagIds.value = (c.tags ?? []).map((t) => t.id);
+  depDraft.value = [...props.dependencies];
+  baseDeps = [...props.dependencies];
+  baseline.value = draftSignature();
+  seenRemote = remoteSignature();
+  remoteChanged.value = false;
+}
+
+function keepMine() {
+  seenRemote = remoteSignature();
+  remoteChanged.value = false;
+}
+
+watch(
+  () => [props.card, props.dependencies] as const,
+  () => {
+    if (isNew || saving.value) return;
+    if (remoteSignature() === seenRemote) return;
+    if (dirty.value) remoteChanged.value = true;
+    else applyLatest();
+  }
 );
 
 const displayId = computed(() => (props.card ? `${props.prefix}-${props.card.seq}` : "New card"));
@@ -195,7 +249,7 @@ async function persistDependencies(cardId: number): Promise<boolean> {
   if (!props.dependenciesEnabled) return true;
   const resolve = (id: number) => (id === NEW_CARD_ID ? cardId : id);
   const key = (d: Dependency) => `${d.blockedId}>${d.blockerId}`;
-  const before = props.dependencies.filter((d) => d.blockedId === selfId || d.blockerId === selfId);
+  const before = baseDeps.filter((d) => d.blockedId === selfId || d.blockerId === selfId);
   const after = depDraft.value
     .filter((d) => d.blockedId === selfId || d.blockerId === selfId)
     .map((d) => ({ blockedId: resolve(d.blockedId), blockerId: resolve(d.blockerId) }));
@@ -205,7 +259,7 @@ async function persistDependencies(cardId: number): Promise<boolean> {
   const added = after.filter((d) => !beforeKeys.has(key(d)));
   if (!removed.length && !added.length) return true;
 
-  let result = props.dependencies.slice();
+  let result = props.dependencies.slice(); // start from the board's latest links
   let failure = "";
   for (const d of removed) {
     try {
@@ -226,6 +280,7 @@ async function persistDependencies(cardId: number): Promise<boolean> {
   emit("dependenciesChanged", result);
   if (failure && !isNew) {
     depDraft.value = result;
+    baseDeps = result;
     error.value = `Card saved, but a dependency wasn't: ${failure}`;
     return false;
   }
@@ -397,6 +452,15 @@ onBeforeUnmount(() => {
             </svg>
           </button>
         </div>
+      </div>
+
+      <div v-if="remoteChanged" class="remote-banner" role="status">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" />
+        </svg>
+        <span>Someone else changed this card while you were editing.</span>
+        <button type="button" class="banner-btn primary" @click="applyLatest">Load latest</button>
+        <button type="button" class="banner-btn" @click="keepMine">Keep mine</button>
       </div>
 
       <div class="m-body">
@@ -667,8 +731,8 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 32px 80px -24px var(--shadow-color);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   animation: rise 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
@@ -740,6 +804,7 @@ onBeforeUnmount(() => {
 .m-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
+  flex: 1;
   min-height: 0;
 }
 .m-main {
@@ -1175,6 +1240,41 @@ onBeforeUnmount(() => {
   color: var(--warning-text);
 }
 .dirty .dot { background: currentColor; }
+.remote-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 9px 20px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.remote-banner svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.remote-banner span {
+  flex: 1;
+  min-width: 180px;
+}
+.banner-btn {
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.banner-btn.primary {
+  background: var(--warning-text);
+  border-color: var(--warning-text);
+  color: var(--panel);
+}
+
 .archived-pill {
   display: inline-flex;
   align-items: center;

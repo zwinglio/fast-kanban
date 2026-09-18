@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "../db.js";
+import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
 import { eventRows } from "../events.js";
 
@@ -39,6 +40,7 @@ tags.patch("/:id", async (c) => {
   }
 
   const tag = await prisma.tag.update({ where: { id }, data: { name } });
+  notifyBoard(c, check.tag.boardId, "board");
   return c.json(tag);
 });
 
@@ -61,5 +63,6 @@ tags.delete("/:id", async (c) => {
       ),
     }),
   ]);
+  notifyBoard(c, check.tag.boardId, "board");
   return c.json({ ok: true });
 });

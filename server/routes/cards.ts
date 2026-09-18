@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "../db.js";
+import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
 import { eventRows, type CardEventInput } from "../events.js";
 import { MAX_POINTS, parsePoints } from "../points.js";
@@ -73,6 +74,7 @@ cards.post("/:id/dependencies", async (c) => {
       ],
     }),
   ]);
+  notifyBoard(c, boardId, "card", id);
   return c.json({ blockedId: id, blockerId }, 201);
 });
 
@@ -106,6 +108,7 @@ cards.delete("/:id/dependencies/:blockerId", async (c) => {
       ],
     }),
   ]);
+  notifyBoard(c, boardId, "card", id);
   return c.json({ ok: true });
 });
 
@@ -212,6 +215,7 @@ cards.post("/:id/comments", async (c) => {
       ]),
     }),
   ]);
+  notifyBoard(c, check.card.boardId, "card", id);
   return c.json(comment, 201);
 });
 
@@ -323,6 +327,7 @@ cards.patch("/:id", async (c) => {
     prisma.card.update({ where: { id }, data, include: { tags: true, ...commentCountInclude } }),
     prisma.cardEvent.createMany({ data: eventRows(id, check.card.boardId, events) }),
   ]);
+  notifyBoard(c, check.card.boardId, "card", id);
   return c.json(withCommentCount(updated));
 });
 
@@ -354,6 +359,7 @@ cards.delete("/:id", async (c) => {
       ),
     }),
   ]);
+  notifyBoard(c, boardId, "card", id);
   return c.json({ ok: true });
 });
 

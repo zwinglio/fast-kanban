@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "../db.js";
+import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
 import { isValidPaletteColor, isValidPriorityName } from "../priorities.js";
 import { eventRows } from "../events.js";
@@ -62,6 +63,7 @@ priorities.patch("/:id", async (c) => {
   }
 
   const updated = await prisma.priority.update({ where: { id }, data });
+  notifyBoard(c, check.priority.boardId, "board");
   return c.json(updated);
 });
 
@@ -84,5 +86,6 @@ priorities.delete("/:id", async (c) => {
       ),
     }),
   ]);
+  notifyBoard(c, check.priority.boardId, "board");
   return c.json({ ok: true });
 });

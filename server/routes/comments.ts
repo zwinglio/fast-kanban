@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "../db.js";
+import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
 import { MAX_COMMENT_LENGTH, commentExcerpt, parseCommentBody } from "../comments.js";
 import { eventRows } from "../events.js";
@@ -39,6 +40,7 @@ comments.patch("/:id", async (c) => {
       ]),
     }),
   ]);
+  notifyBoard(c, boardId, "card", cardId);
   return c.json(updated);
 });
 
@@ -59,5 +61,6 @@ comments.delete("/:id", async (c) => {
       ]),
     }),
   ]);
+  notifyBoard(c, boardId, "card", cardId);
   return c.json({ ok: true });
 });

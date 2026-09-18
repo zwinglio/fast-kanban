@@ -61,6 +61,12 @@ class ApiError extends Error {
   }
 }
 
+// Identifies this tab on writes, so live updates it caused itself can be ignored.
+export const CLIENT_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -68,6 +74,7 @@ async function request<T>(
 ): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
+  headers.set("X-Client-Id", CLIENT_ID);
   if (boardId) {
     const key = getEditKey(boardId);
     if (key) headers.set("X-Edit-Key", key);

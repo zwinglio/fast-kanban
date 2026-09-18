@@ -8,6 +8,8 @@ import { eventRows, type CardEventInput } from "../events.js";
 import { MAX_POINTS, parsePoints } from "../points.js";
 import { isValidBoardIcon } from "../boardIcons.js";
 import { commentCountInclude, withCommentCount } from "../comments.js";
+import { streamSSE } from "hono/streaming";
+import { notifyBoard, subscribe, viewerCount } from "../live.js";
 import { DEFAULT_PRIORITIES, MAX_PRIORITIES, isValidPriorityName } from "../priorities.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
@@ -196,7 +198,47 @@ boards.patch("/:id", requireEditKey, async (c) => {
   }
 
   const board = await prisma.board.update({ where: { id: boardId }, data });
+  notifyBoard(c, boardId, "board");
   return c.json(publicBoard(board));
+});
+
+// GET /api/boards/:id/stream?client=<tabId> - Server-Sent Events: "change" when anything on the
+// board changes (clients reload), "presence" with the number of open viewers. Public, like the board.
+const HEARTBEAT_MS = 25_000;
+boards.get("/:id/stream", async (c) => {
+  const boardId = c.req.param("id");
+  const exists = await prisma.board.findUnique({ where: { id: boardId }, select: { id: true } });
+  if (!exists) return c.json({ error: "Board not found" }, 404);
+  const clientId = (c.req.query("client") ?? "").slice(0, 64);
+
+  // Stop nginx (CloudPanel) from buffering the stream.
+  c.header("X-Accel-Buffering", "no");
+  c.header("Cache-Control", "no-cache, no-transform");
+
+  return streamSSE(c, async (stream) => {
+    let open = true;
+    let unsubscribe: (() => void) | null = null;
+    // Runs once, whichever notices first: the client aborting or a failed write.
+    const close = () => {
+      open = false;
+      unsubscribe?.();
+      unsubscribe = null;
+    };
+    unsubscribe = subscribe(boardId, {
+      clientId,
+      send: (event, data) => {
+        if (open) stream.writeSSE({ event, data: JSON.stringify(data) }).catch(close);
+      },
+    });
+    stream.onAbort(close);
+    await stream.writeSSE({ event: "hello", data: JSON.stringify({ viewers: viewerCount(boardId) }), retry: 3000 });
+    // Heartbeats keep proxies from closing an idle connection (and reveal dead ones).
+    while (open) {
+      await stream.sleep(HEARTBEAT_MS);
+      if (open) await stream.writeSSE({ event: "ping", data: "" }).catch(close);
+    }
+    close();
+  });
 });
 
 // GET /api/boards/:id/verify - check whether a supplied X-Edit-Key is valid
@@ -316,6 +358,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
     return created;
   });
 
+  notifyBoard(c, boardId, "card", card.id);
   return c.json({ ...card, commentCount: 0 }, 201);
 });
 
@@ -349,6 +392,7 @@ boards.post("/:id/columns", requireEditKey, async (c) => {
     data: { boardId, name, color, position },
   });
 
+  notifyBoard(c, boardId, "board");
   return c.json(column, 201);
 });
 
@@ -383,6 +427,7 @@ boards.post("/:id/priorities", requireEditKey, async (c) => {
     data: { boardId, name, color, position },
   });
 
+  notifyBoard(c, boardId, "board");
   return c.json(priority, 201);
 });
 
@@ -416,5 +461,6 @@ boards.post("/:id/tags", requireEditKey, async (c) => {
     create: { boardId, name },
   });
 
+  notifyBoard(c, boardId, "board");
   return c.json(tag, 201);
 });
