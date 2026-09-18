@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { updateBoard, ApiError, type Board } from "../api";
 import { DENSITIES, type Density } from "../lib/density";
 import ModalShell from "./ModalShell.vue";
+import ToggleSwitch from "./ToggleSwitch.vue";
 
 const props = defineProps<{
   boardId: string;
@@ -11,6 +12,7 @@ const props = defineProps<{
   density: Density;
   nextSeq: number;
   highestSeq: number; // highest card number in use, archived cards included
+  pointsEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,6 +31,7 @@ const MAX_SEQ = 999_999;
 const nextValid = computed(
   () => Number.isInteger(nextSeq.value) && (nextSeq.value as number) >= minNext && (nextSeq.value as number) <= MAX_SEQ
 );
+const pointsEnabled = ref(props.pointsEnabled);
 const saving = ref(false);
 const error = ref("");
 const titleEl = ref<HTMLInputElement | null>(null);
@@ -47,7 +50,8 @@ async function save() {
   }
   if (density.value !== props.density) emit("update:density", density.value);
 
-  const patch: { title?: string; nextSeq?: number } = {};
+  const patch: { title?: string; nextSeq?: number; pointsEnabled?: boolean } = {};
+  if (pointsEnabled.value !== props.pointsEnabled) patch.pointsEnabled = pointsEnabled.value;
   if (trimmed !== props.title) patch.title = trimmed;
   if (nextSeq.value !== currentNext) patch.nextSeq = nextSeq.value as number;
   if (!Object.keys(patch).length) {
@@ -113,6 +117,20 @@ async function save() {
           <template v-else>Set it to keep the numbering from a previous project.</template>
         </template>
         <template v-else>Use a whole number from {{ minNext }} to {{ MAX_SEQ.toLocaleString() }} so no ID is reused.</template>
+      </p>
+    </section>
+
+    <section class="sheet-section">
+      <div class="sheet-section-head">
+        <span class="sheet-label">Estimation</span>
+      </div>
+      <ToggleSwitch
+        v-model="pointsEnabled"
+        label="Story points"
+        hint="Estimate cards with points and see totals per column."
+      />
+      <p v-if="!pointsEnabled && props.pointsEnabled" class="sheet-note">
+        Points are hidden when turned off — estimates on cards are kept.
       </p>
     </section>
 

@@ -30,6 +30,7 @@ export interface Card {
   body: string | null;
   columnId: number;
   priorityId: number | null;
+  points: number | null; // story points; null = not estimated
   position: number;
   archivedAt: string | null;
   tags: Tag[];
@@ -42,6 +43,7 @@ export interface Board {
   title: string;
   prefix: string;
   nextSeq: number; // number the next created card will get
+  pointsEnabled: boolean; // story points are opt-in per board
 }
 
 class ApiError extends Error {
@@ -81,7 +83,10 @@ export function getBoard(id: string) {
   return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[]; priorities: Priority[] }>(`/boards/${id}`);
 }
 
-export function updateBoard(boardId: string, patch: Partial<{ title: string; nextSeq: number }>) {
+export function updateBoard(
+  boardId: string,
+  patch: Partial<{ title: string; nextSeq: number; pointsEnabled: boolean }>
+) {
   return request<Board>(`/boards/${boardId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
@@ -96,7 +101,14 @@ export function verifyEditKey(id: string, key: string) {
 
 export function createCard(
   boardId: string,
-  payload: { title: string; body?: string; columnId?: number; priorityId?: number | null; tagIds?: number[] }
+  payload: {
+    title: string;
+    body?: string;
+    columnId?: number;
+    priorityId?: number | null;
+    points?: number | null;
+    tagIds?: number[];
+  }
 ) {
   return request<Card>(`/boards/${boardId}/cards`, {
     method: "POST",
@@ -112,6 +124,7 @@ export function updateCard(
     body: string | null;
     columnId: number;
     priorityId: number | null;
+    points: number | null;
     position: number;
     tagIds: number[];
     archived: boolean;
@@ -170,6 +183,7 @@ export type CardEvent =
   | { id: number; createdAt: string; type: "description"; data: null }
   | { id: number; createdAt: string; type: "priority"; data: { from: string | null; to: string | null } }
   | { id: number; createdAt: string; type: "tags"; data: { added: string[]; removed: string[] } }
+  | { id: number; createdAt: string; type: "points"; data: { from: number | null; to: number | null } }
   | { id: number; createdAt: string; type: "archived" | "restored"; data: null };
 
 export function getCardEvents(cardId: number, opts: { limit?: number; before?: number } = {}) {

@@ -9,16 +9,17 @@ generator client {
 }
 
 model Board {
-  id         String     @id @db.VarChar(12) // nanoid public slug (URL)
-  title      String     @db.VarChar(255)
-  prefix     String     @db.VarChar(16) // e.g. "PROJ"
-  editHash   String     @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
-  nextSeq    Int        @default(1) @map("next_seq") // per-board card counter
-  createdAt  DateTime   @default(now()) @map("created_at")
-  cards      Card[]
-  tags       Tag[]
-  columns    Column[]
-  priorities Priority[]
+  id            String     @id @db.VarChar(12) // nanoid public slug (URL)
+  title         String     @db.VarChar(255)
+  prefix        String     @db.VarChar(16) // e.g. "PROJ"
+  editHash      String     @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
+  nextSeq       Int        @default(1) @map("next_seq") // per-board card counter
+  pointsEnabled Boolean    @default(false) @map("points_enabled") // story points are opt-in per board
+  createdAt     DateTime   @default(now()) @map("created_at")
+  cards         Card[]
+  tags          Tag[]
+  columns       Column[]
+  priorities    Priority[]
 
   @@map("boards")
 }
@@ -81,6 +82,7 @@ model Card {
   body       String?     @db.MediumText // markdown
   columnId   Int         @map("column_id")
   priorityId Int?        @map("priority_id")
+  points     Int? // story points; null = not estimated
   position   Int         @default(0) // order within a column
   archivedAt DateTime?   @map("archived_at") // null = active; archived cards are hidden by default
   createdAt  DateTime    @default(now()) @map("created_at")

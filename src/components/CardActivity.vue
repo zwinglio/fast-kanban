@@ -80,6 +80,10 @@ function absolute(iso: string) {
 
 type Part = { text: string; strong?: boolean };
 
+function pts(n: number) {
+  return `${n} ${n === 1 ? "point" : "points"}`;
+}
+
 // Builds the sentence for an entry as plain parts (rendered as text, never as HTML).
 function describe(e: CardEvent): Part[] {
   switch (e.type) {
@@ -107,6 +111,10 @@ function describe(e: CardEvent): Part[] {
       }
       return parts;
     }
+    case "points":
+      if (e.data.to === null) return [{ text: "Cleared the estimate" }];
+      if (e.data.from === null) return [{ text: "Estimated at " }, { text: pts(e.data.to), strong: true }];
+      return [{ text: "Estimate " }, { text: pts(e.data.from), strong: true }, { text: " → " }, { text: pts(e.data.to), strong: true }];
     case "archived":
       return [{ text: "Archived" }];
     case "restored":
@@ -120,6 +128,7 @@ const ICONS: Record<CardEvent["type"], string> = {
   title: "M4 20h4L19 9l-4-4L4 16v4z",
   description: "M4 6h16M4 12h16M4 18h10",
   priority: "M5 21V4.5M5 4.5c2.5-1.6 5-1.6 7.5 0s5 1.6 7.5 0v9c-2.5 1.6-5 1.6-7.5 0s-5-1.6-7.5 0",
+  points: "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z",
   tags: "M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z",
   archived: "M3 4h18v5H3zM5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4",
   restored: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",

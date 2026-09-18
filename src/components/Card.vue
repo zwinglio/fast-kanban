@@ -9,6 +9,7 @@ const props = defineProps<{
   prefix: string;
   density: Density;
   priorities: Priority[];
+  pointsEnabled: boolean;
 }>();
 
 defineEmits<{ open: [] }>();
@@ -65,6 +66,11 @@ const updatedLabel = computed(() => {
             <path d="M4 6h16M4 12h16M4 18h10" />
           </svg>
         </span>
+        <span
+          v-if="pointsEnabled && card.points !== null"
+          class="card-points"
+          :title="`${card.points} story ${card.points === 1 ? 'point' : 'points'}`"
+        >{{ card.points }}</span>
         <span
           v-if="priority"
           class="card-priority"
@@ -181,6 +187,21 @@ const updatedLabel = computed(() => {
 .card-priority.icon-only {
   padding: 0;
   background: none;
+}
+
+.card-points {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  font-size: 11px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--text) 80%, var(--muted));
+  font-variant-numeric: tabular-nums;
 }
 
 .has-body {

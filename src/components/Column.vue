@@ -3,8 +3,9 @@ import draggable from "vuedraggable";
 import type { Card as CardType, Priority } from "../api";
 import type { Density } from "../lib/density";
 import CardTile from "./Card.vue";
+import { computed } from "vue";
 
-defineProps<{
+const props = defineProps<{
   title: string;
   color: string;
   columnId: number;
@@ -14,7 +15,10 @@ defineProps<{
   disableDrag?: boolean;
   density: Density;
   priorities: Priority[];
+  pointsEnabled: boolean;
 }>();
+
+const totalPoints = computed(() => props.cards.reduce((sum, c) => sum + (c.points ?? 0), 0));
 
 const emit = defineEmits<{
   change: [];
@@ -28,6 +32,9 @@ const emit = defineEmits<{
     <header class="column-header">
       <span class="dot" aria-hidden="true" />
       <span class="title">{{ title }}</span>
+      <span v-if="pointsEnabled && totalPoints" class="points-total" :title="`${totalPoints} story points in this column`">
+        {{ totalPoints }} pts
+      </span>
       <span class="count">{{ cards.length }}</span>
       <button
         v-if="!readOnly"
@@ -54,7 +61,7 @@ const emit = defineEmits<{
       @change="emit('change')"
     >
       <template #item="{ element }">
-        <CardTile :card="element" :prefix="prefix" :density="density" :priorities="priorities" @open="emit('open', element)" />
+        <CardTile :card="element" :prefix="prefix" :density="density" :priorities="priorities" :points-enabled="pointsEnabled" @open="emit('open', element)" />
       </template>
     </draggable>
 
@@ -131,6 +138,13 @@ const emit = defineEmits<{
   background: var(--soft);
   border-radius: 999px;
   padding: 1px 8px;
+}
+
+.points-total {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .head-add {

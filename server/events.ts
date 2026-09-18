@@ -9,6 +9,7 @@ export type CardEventInput =
   | { type: "description"; data: null }
   | { type: "priority"; data: { from: string | null; to: string | null } }
   | { type: "tags"; data: { added: string[]; removed: string[] } }
+  | { type: "points"; data: { from: number | null; to: number | null } }
   | { type: "archived"; data: null }
   | { type: "restored"; data: null };
 

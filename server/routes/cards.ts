@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { prisma } from "../db.js";
 import { verifyEditKey } from "../auth.js";
 import { eventRows, type CardEventInput } from "../events.js";
+import { MAX_POINTS, parsePoints } from "../points.js";
 
 export const cards = new Hono();
 
@@ -109,6 +110,12 @@ cards.patch("/:id", async (c) => {
     }
   }
 
+  if (body.points !== undefined) {
+    const parsed = parsePoints(body.points);
+    if (!parsed.ok) return c.json({ error: `Story points must be a whole number from 0 to ${MAX_POINTS}` }, 400);
+    data.points = parsed.value;
+  }
+
   // archived: true stamps archivedAt; false restores the card to the end of its column.
   if (body.archived !== undefined) {
     if (typeof body.archived !== "boolean") {
@@ -193,6 +200,9 @@ async function describeChanges(
       type: "priority",
       data: { from: before.priority?.name ?? null, to: data.priorityId === null ? null : names.newPriorityName },
     });
+  }
+  if (data.points !== undefined && data.points !== before.points) {
+    events.push({ type: "points", data: { from: before.points, to: data.points as number | null } });
   }
   if (names.newTags) {
     const beforeIds = new Set(before.tags.map((t) => t.id));

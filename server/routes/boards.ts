@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../auth.js";
 import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
 import { eventRows } from "../events.js";
+import { MAX_POINTS, parsePoints } from "../points.js";
 import { DEFAULT_PRIORITIES, MAX_PRIORITIES, isValidPriorityName } from "../priorities.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
@@ -23,8 +24,14 @@ function parseSeq(value: unknown): number | null {
   return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= MAX_SEQ ? n : null;
 }
 
-function publicBoard(board: { id: string; title: string; prefix: string; nextSeq: number }) {
-  return { id: board.id, title: board.title, prefix: board.prefix, nextSeq: board.nextSeq };
+function publicBoard(board: { id: string; title: string; prefix: string; nextSeq: number; pointsEnabled: boolean }) {
+  return {
+    id: board.id,
+    title: board.title,
+    prefix: board.prefix,
+    nextSeq: board.nextSeq,
+    pointsEnabled: board.pointsEnabled,
+  };
 }
 
 // POST /api/boards - create a board
@@ -113,7 +120,7 @@ boards.patch("/:id", requireEditKey, async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "Invalid body" }, 400);
 
-  const data: { title?: string; nextSeq?: number } = {};
+  const data: { title?: string; nextSeq?: number; pointsEnabled?: boolean } = {};
 
   if (body.title !== undefined) {
     const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -137,7 +144,15 @@ boards.patch("/:id", requireEditKey, async (c) => {
     data.nextSeq = nextSeq;
   }
 
-  if (data.title === undefined && data.nextSeq === undefined) {
+  if (body.pointsEnabled !== undefined) {
+    if (typeof body.pointsEnabled !== "boolean") {
+      return c.json({ error: "Invalid story points setting" }, 400);
+    }
+    // Turning points off only hides them; card estimates are kept.
+    data.pointsEnabled = body.pointsEnabled;
+  }
+
+  if (data.title === undefined && data.nextSeq === undefined && data.pointsEnabled === undefined) {
     return c.json({ error: "Nothing to update" }, 400);
   }
 
@@ -205,6 +220,13 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
     priorityId = owned.id;
   }
 
+  let points: number | null = null;
+  if (body?.points !== undefined) {
+    const parsed = parsePoints(body.points);
+    if (!parsed.ok) return c.json({ error: `Story points must be a whole number from 0 to ${MAX_POINTS}` }, 400);
+    points = parsed.value;
+  }
+
   const card = await prisma.$transaction(async (tx) => {
     const updatedBoard = await tx.board.update({
       where: { id: boardId },
@@ -225,6 +247,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
       body: cardBody,
       columnId,
       priorityId,
+      points,
       position,
     };
 

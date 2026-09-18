@@ -15,6 +15,7 @@ const props = defineProps<{
   boardTags: Tag[];
   boardColumns: Column[];
   boardPriorities: Priority[];
+  pointsEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -28,6 +29,9 @@ const title = ref(props.card?.title ?? "");
 const body = ref(props.card?.body ?? "");
 const columnId = ref<number>(props.card?.columnId ?? props.initialColumnId ?? props.boardColumns[0]?.id ?? 0);
 const priorityId = ref<number | null>(props.card?.priorityId ?? null);
+const points = ref<number | null>(props.card?.points ?? null);
+const POINT_SCALE = [1, 2, 3, 5, 8, 13, 21];
+const MAX_POINTS = 100;
 const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
 // Description opens straight into edit mode; read-only viewers only ever see the preview.
 const mode = ref<"edit" | "preview">(props.readOnly ? "preview" : "edit");
@@ -44,9 +48,9 @@ const titleEl = ref<HTMLTextAreaElement | null>(null);
 const bodyEl = ref<HTMLTextAreaElement | null>(null);
 const tagPickerEl = ref<HTMLElement | null>(null);
 
-const snapshot = JSON.stringify([title.value, body.value, columnId.value, priorityId.value, [...selectedTagIds.value].sort()]);
+const snapshot = JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort()]);
 const dirty = computed(
-  () => JSON.stringify([title.value, body.value, columnId.value, priorityId.value, [...selectedTagIds.value].sort()]) !== snapshot
+  () => JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort()]) !== snapshot
 );
 
 const displayId = computed(() => (props.card ? `${props.prefix}-${props.card.seq}` : "New card"));
@@ -72,6 +76,21 @@ watch(title, () => autoGrow(titleEl.value));
 function setMode(next: "edit" | "preview") {
   mode.value = next;
   if (next === "edit") nextTick(() => bodyEl.value?.focus({ preventScroll: true }));
+}
+
+function setPoints(value: number | null) {
+  if (props.readOnly) return;
+  points.value = points.value === value ? null : value;
+}
+
+function onPointsInput(e: Event) {
+  const raw = (e.target as HTMLInputElement).value.trim();
+  if (raw === "") {
+    points.value = null;
+    return;
+  }
+  const n = Number(raw);
+  if (Number.isInteger(n) && n >= 0 && n <= MAX_POINTS) points.value = n;
 }
 
 function addTag(id: number) {
@@ -105,6 +124,7 @@ async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {})
         body: body.value,
         columnId: columnId.value,
         priorityId: priorityId.value,
+        ...(props.pointsEnabled ? { points: points.value } : {}),
         tagIds: selectedTagIds.value,
       });
       emit("saved", created);
@@ -114,6 +134,7 @@ async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {})
         body: body.value,
         columnId: columnId.value,
         priorityId: priorityId.value,
+        ...(props.pointsEnabled ? { points: points.value } : {}),
         tagIds: selectedTagIds.value,
         ...(opts.archived !== undefined ? { archived: opts.archived } : {}),
       });
@@ -309,6 +330,49 @@ onBeforeUnmount(() => {
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </div>
+          </section>
+
+          <section v-if="pointsEnabled" class="rail-sec">
+            <div class="rail-sec-head">
+              <span class="label">Story points</span>
+              <button
+                v-if="points !== null && !readOnly"
+                type="button"
+                class="clear-link"
+                @click="points = null"
+              >
+                Clear
+              </button>
+            </div>
+            <div class="points" role="radiogroup" aria-label="Story points">
+              <button
+                v-for="n in POINT_SCALE"
+                :key="n"
+                type="button"
+                role="radio"
+                class="point-chip"
+                :aria-checked="points === n"
+                :disabled="readOnly"
+                @click="setPoints(n)"
+              >
+                {{ n }}
+              </button>
+              <input
+                class="point-input"
+                :class="{ custom: points !== null && !POINT_SCALE.includes(points) }"
+                type="number"
+                min="0"
+                :max="MAX_POINTS"
+                step="1"
+                inputmode="numeric"
+                placeholder="#"
+                aria-label="Custom story points"
+                :value="points !== null && !POINT_SCALE.includes(points) ? points : ''"
+                :disabled="readOnly"
+                @change="onPointsInput"
+              />
+            </div>
+            <p v-if="points === null" class="rail-empty">Not estimated</p>
           </section>
 
           <section class="rail-sec">
@@ -725,6 +789,66 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   padding: 1px 7px;
 }
+.clear-link {
+  padding: 2px 6px;
+  margin-right: -6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+.clear-link:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+.points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.point-chip,
+.point-input {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.point-chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--border) 45%, var(--text));
+}
+.point-chip[aria-checked="true"],
+.point-input.custom {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.point-chip:disabled {
+  cursor: default;
+}
+.point-input {
+  width: 52px;
+  text-align: center;
+}
+.point-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.point-input::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+.points + .rail-empty {
+  margin: 8px 0 0;
+}
+
 .rail-empty {
   font-size: 13px;
   color: var(--muted);
