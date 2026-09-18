@@ -12,6 +12,7 @@ import TagsSettings from "../components/TagsSettings.vue";
 import GeneralSettings from "../components/GeneralSettings.vue";
 import BoardSwitcher from "../components/BoardSwitcher.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
+import FilterBar from "../components/FilterBar.vue";
 
 const route = useRoute();
 const boardId = route.params.id as string;
@@ -173,28 +174,13 @@ const filteredColumns = computed<Record<number, Card[]>>(() => {
   return out;
 });
 
+const totalCards = computed(() =>
+  boardColumns.value.reduce((sum, col) => sum + (columns[col.id]?.length ?? 0), 0)
+);
+
 const totalMatching = computed(() =>
   boardColumns.value.reduce((sum, col) => sum + (filteredColumns.value[col.id]?.length ?? 0), 0)
 );
-
-function toggleTagFilter(id: number) {
-  const next = new Set(activeTagIds.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  activeTagIds.value = next;
-}
-
-function toggleColumnFilter(id: number) {
-  const next = new Set(activeColumnIds.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  activeColumnIds.value = next;
-}
-
-function clearFilters() {
-  activeTagIds.value = new Set();
-  activeColumnIds.value = new Set(boardColumns.value.map((c) => c.id));
-}
 
 function onTagCreated(tag: Tag) {
   if (!boardTags.value.some((t) => t.id === tag.id)) {
@@ -337,54 +323,16 @@ function onBoardSaved(updated: Board) {
         </div>
       </div>
 
-      <div class="filter-bar">
-        <div class="filter-inner">
-          <div v-if="boardTags.length" class="filter-group">
-            <span class="filter-label">Tags</span>
-            <div class="filter-chips">
-              <button
-                v-for="tag in boardTags"
-                :key="tag.id"
-                type="button"
-                class="tag-chip selectable"
-                :class="{ active: activeTagIds.has(tag.id) }"
-                @click="toggleTagFilter(tag.id)"
-              >
-                {{ tag.name }}
-              </button>
-            </div>
-          </div>
-          <div v-if="boardTags.length" class="filter-divider" />
-          <div class="filter-group">
-            <span class="filter-label">Columns</span>
-            <div class="filter-chips">
-              <button
-                v-for="col in boardColumns"
-                :key="col.id"
-                type="button"
-                class="status-chip"
-                :style="activeColumnIds.has(col.id) ? { background: col.color, borderColor: 'transparent', color: '#fff' } : {}"
-                @click="toggleColumnFilter(col.id)"
-              >
-                {{ col.name }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="filter-actions">
-          <span class="filter-count" :class="{ dimmed: !filterActive }">
-            {{ filterActive ? `${totalMatching} shown` : `${totalMatching} cards` }}
-          </span>
-          <button
-            v-if="filterActive"
-            class="btn secondary small"
-            type="button"
-            @click="clearFilters"
-          >
-            Clear filters
-          </button>
-        </div>
-      </div>
+      <FilterBar
+        v-model:tag-ids="activeTagIds"
+        v-model:column-ids="activeColumnIds"
+        :tags="boardTags"
+        :columns="boardColumns"
+        :card-counts="cardCountsByColumn()"
+        :shown-count="totalMatching"
+        :total-count="totalCards"
+        :filter-active="filterActive"
+      />
 
       <div class="columns">
         <ColumnComp
@@ -457,90 +405,6 @@ function onBoardSaved(updated: Board) {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.filter-inner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filter-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.filter-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-}
-
-.filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.status-chip {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 12px;
-  padding: 2px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.status-chip:hover {
-  border-color: var(--muted);
-}
-
-.status-chip.active {
-  color: #fff;
-  border-color: transparent;
-}
-
-.filter-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-}
-
-.filter-count {
-  font-size: 13px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.filter-count.dimmed {
-  opacity: 0.6;
 }
 
 .status-msg {
