@@ -7,6 +7,7 @@ const props = defineProps<{
   columns: Column[];
   tagIds: Set<number>;
   columnIds: Set<number>;
+  query: string;
   cardCounts: Record<number, number>;
   shownCount: number;
   totalCount: number;
@@ -16,12 +17,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:tagIds": [ids: Set<number>];
   "update:columnIds": [ids: Set<number>];
+  "update:query": [query: string];
 }>();
 
 const openMenu = ref<"tags" | "columns" | null>(null);
 const tagQuery = ref("");
 const root = ref<HTMLElement | null>(null);
 const tagSearchEl = ref<HTMLInputElement | null>(null);
+const searchEl = ref<HTMLInputElement | null>(null);
 
 const selectedTags = computed(() => props.tags.filter((t) => props.tagIds.has(t.id)));
 const visibleTags = computed(() => {
@@ -73,9 +76,30 @@ function showAllColumns() {
   emit("update:columnIds", new Set(props.columns.map((c) => c.id)));
 }
 
+function onSearchInput(e: Event) {
+  emit("update:query", (e.target as HTMLInputElement).value);
+}
+
+function clearSearch() {
+  emit("update:query", "");
+  searchEl.value?.focus();
+}
+
+function onSearchEscape(e: KeyboardEvent) {
+  e.preventDefault();
+  if (props.query) emit("update:query", "");
+  else searchEl.value?.blur();
+}
+
+function isTypingTarget(el: EventTarget | null) {
+  if (!(el instanceof HTMLElement)) return false;
+  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+}
+
 function clearAll() {
   clearTags();
   showAllColumns();
+  emit("update:query", "");
   openMenu.value = null;
 }
 
@@ -88,6 +112,21 @@ function onDocMousedown(e: MouseEvent) {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  // "/" jumps to search, unless the user is typing or a dialog is open.
+  if (
+    e.key === "/" &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey &&
+    !isTypingTarget(e.target) &&
+    !document.querySelector('[aria-modal="true"]')
+  ) {
+    e.preventDefault();
+    openMenu.value = null;
+    searchEl.value?.focus();
+    searchEl.value?.select();
+    return;
+  }
   if (e.key === "Escape" && openMenu.value) {
     e.preventDefault();
     openMenu.value = null;
@@ -108,12 +147,6 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" class="filter-bar">
     <div class="filter-left">
-      <span class="filter-glyph" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 5h16l-6 7.5V19l-4-2v-4.5z" />
-        </svg>
-      </span>
-
       <!-- Tags -->
       <div v-if="tags.length" class="filter-pop">
         <div class="trigger" :class="{ active: tagsActive, open: openMenu === 'tags' }">
@@ -250,6 +283,29 @@ onBeforeUnmount(() => {
         <template v-else>{{ totalCount }} {{ totalCount === 1 ? "card" : "cards" }}</template>
       </span>
       <button v-if="filterActive" type="button" class="clear-all" @click="clearAll">Clear filters</button>
+      <div class="search" :class="{ filled: !!query }">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
+        </svg>
+        <input
+          ref="searchEl"
+          :value="query"
+          type="search"
+          placeholder="Search cards…"
+          aria-label="Search cards"
+          autocomplete="off"
+          spellcheck="false"
+          @input="onSearchInput"
+          @keydown.esc="onSearchEscape"
+        />
+        <button v-if="query" type="button" class="search-clear" aria-label="Clear search" @click="clearSearch">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+        <kbd v-else class="search-kbd" aria-hidden="true">/</kbd>
+      </div>
     </div>
   </div>
 </template>
@@ -278,15 +334,86 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.filter-glyph {
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 240px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--sunken);
+  transition: border-color 0.15s ease, width 0.2s ease;
+}
+.search:hover {
+  border-color: color-mix(in srgb, var(--border) 50%, var(--text));
+}
+.search:focus-within {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.search:focus-within,
+.search.filled {
+  width: 300px;
+}
+.search.filled {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.search-icon {
+  position: absolute;
+  left: 9px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 0 30px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.search input::placeholder {
+  color: var(--muted);
+}
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+.search-kbd {
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.search-clear {
   display: grid;
   place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
   color: var(--muted);
-  margin-right: 2px;
 }
-.filter-glyph svg {
-  width: 16px;
-  height: 16px;
+.search-clear:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+.search-clear svg {
+  width: 10px;
+  height: 10px;
 }
 
 .filter-pop {
@@ -548,6 +675,24 @@ onBeforeUnmount(() => {
 }
 .clear-all:hover {
   background: var(--accent-soft);
+}
+
+@media (max-width: 640px) {
+  .filter-right {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .search {
+    order: -1;
+  }
+  .search,
+  .search:focus-within,
+  .search.filled {
+    width: 100%;
+  }
+  .search-kbd {
+    display: none;
+  }
 }
 
 @media (max-width: 520px) {

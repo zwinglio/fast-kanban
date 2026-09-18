@@ -27,6 +27,7 @@ const columns = reactive<Record<number, Card[]>>({});
 const boardTags = ref<Tag[]>([]);
 const activeTagIds = ref<Set<number>>(new Set());
 const activeColumnIds = ref<Set<number>>(new Set());
+const searchQuery = ref("");
 
 const readOnly = ref(true);
 const showNewKeyBanner = ref(route.query.newKey === "1");
@@ -164,14 +165,36 @@ function persistColumnOrder(columnId: number) {
   });
 }
 
+// Every whitespace-separated term must appear somewhere in the card.
+const searchTerms = computed(() => searchQuery.value.trim().toLowerCase().split(/\s+/).filter(Boolean));
+
 const filterActive = computed(
-  () => activeTagIds.value.size > 0 || activeColumnIds.value.size < boardColumns.value.length
+  () =>
+    activeTagIds.value.size > 0 ||
+    activeColumnIds.value.size < boardColumns.value.length ||
+    searchTerms.value.length > 0
 );
+
+function cardSearchText(card: Card): string {
+  const prefix = board.value?.prefix ?? "";
+  return [
+    `${prefix}-${card.seq}`,
+    card.title,
+    card.body ?? "",
+    ...(card.tags ?? []).map((t) => t.name),
+  ]
+    .join("\n")
+    .toLowerCase();
+}
 
 function cardMatchesFilters(card: Card): boolean {
   if (!activeColumnIds.value.has(card.columnId)) return false;
-  if (activeTagIds.value.size === 0) return true;
-  return (card.tags ?? []).some((t) => activeTagIds.value.has(t.id));
+  if (activeTagIds.value.size > 0 && !(card.tags ?? []).some((t) => activeTagIds.value.has(t.id))) return false;
+  if (searchTerms.value.length) {
+    const text = cardSearchText(card);
+    if (!searchTerms.value.every((term) => text.includes(term))) return false;
+  }
+  return true;
 }
 
 const filteredColumns = computed<Record<number, Card[]>>(() => {
@@ -336,6 +359,7 @@ function onBoardSaved(updated: Board) {
       <FilterBar
         v-model:tag-ids="activeTagIds"
         v-model:column-ids="activeColumnIds"
+        v-model:query="searchQuery"
         :tags="boardTags"
         :columns="boardColumns"
         :card-counts="cardCountsByColumn()"
