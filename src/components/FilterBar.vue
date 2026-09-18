@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import type { Column, Tag } from "../api";
+import type { Column, Priority, Tag } from "../api";
+import PriorityIcon from "./PriorityIcon.vue";
 
 const props = defineProps<{
   tags: Tag[];
@@ -8,6 +9,10 @@ const props = defineProps<{
   tagIds: Set<number>;
   columnIds: Set<number>;
   query: string;
+  priorities: Priority[];
+  priorityIds: Set<number>;
+  priorityCounts: Record<number, number>;
+  noPriorityId: number;
   cardCounts: Record<number, number>;
   shownCount: number;
   totalCount: number;
@@ -18,9 +23,10 @@ const emit = defineEmits<{
   "update:tagIds": [ids: Set<number>];
   "update:columnIds": [ids: Set<number>];
   "update:query": [query: string];
+  "update:priorityIds": [ids: Set<number>];
 }>();
 
-const openMenu = ref<"tags" | "columns" | null>(null);
+const openMenu = ref<"tags" | "priorities" | "columns" | null>(null);
 const tagQuery = ref("");
 const root = ref<HTMLElement | null>(null);
 const tagSearchEl = ref<HTMLInputElement | null>(null);
@@ -40,9 +46,20 @@ const tagSummary = computed(() => {
   if (names.length <= 2) return names.join(", ");
   return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
 });
+const prioritiesActive = computed(() => props.priorityIds.size > 0);
+const noPriorityCount = computed(() => {
+  const withPriority = Object.values(props.priorityCounts).reduce((a, b) => a + b, 0);
+  return Math.max(0, props.totalCount - withPriority);
+});
+const prioritySummary = computed(() => {
+  const names = props.priorities.filter((p) => props.priorityIds.has(p.id)).map((p) => p.name);
+  if (props.priorityIds.has(props.noPriorityId)) names.push("None");
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+});
 const columnSummary = computed(() => `${props.columnIds.size} of ${props.columns.length}`);
 
-function toggleMenu(menu: "tags" | "columns") {
+function toggleMenu(menu: "tags" | "priorities" | "columns") {
   openMenu.value = openMenu.value === menu ? null : menu;
   if (openMenu.value === "tags") {
     tagQuery.value = "";
@@ -55,6 +72,17 @@ function toggleTag(id: number) {
   if (next.has(id)) next.delete(id);
   else next.add(id);
   emit("update:tagIds", next);
+}
+
+function togglePriority(id: number) {
+  const next = new Set(props.priorityIds);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  emit("update:priorityIds", next);
+}
+
+function clearPriorities() {
+  emit("update:priorityIds", new Set());
 }
 
 function toggleColumn(id: number) {
@@ -98,6 +126,7 @@ function isTypingTarget(el: EventTarget | null) {
 
 function clearAll() {
   clearTags();
+  clearPriorities();
   showAllColumns();
   emit("update:query", "");
   openMenu.value = null;
@@ -206,6 +235,84 @@ onBeforeUnmount(() => {
           <div class="menu-foot">
             <span>Cards with any selected tag</span>
             <button type="button" :disabled="!tagsActive" @click="clearTags">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Priority -->
+      <div v-if="priorities.length" class="filter-pop">
+        <div class="trigger" :class="{ active: prioritiesActive, open: openMenu === 'priorities' }">
+          <button
+            type="button"
+            class="trigger-main"
+            aria-haspopup="listbox"
+            :aria-expanded="openMenu === 'priorities'"
+            @click="toggleMenu('priorities')"
+          >
+            <span class="trigger-label">Priority</span>
+            <template v-if="prioritiesActive">
+              <span class="trigger-sep" aria-hidden="true" />
+              <span class="trigger-value">{{ prioritySummary }}</span>
+            </template>
+            <svg v-else class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          <button
+            v-if="prioritiesActive"
+            type="button"
+            class="trigger-clear"
+            aria-label="Clear priority filter"
+            @click="clearPriorities"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <div v-if="openMenu === 'priorities'" class="menu">
+          <ul class="menu-list" role="listbox" aria-multiselectable="true">
+            <li v-for="p in priorities" :key="p.id">
+              <button
+                type="button"
+                class="menu-opt"
+                role="option"
+                :aria-selected="priorityIds.has(p.id)"
+                @click="togglePriority(p.id)"
+              >
+                <span class="check-box" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </span>
+                <PriorityIcon :color="p.color" :size="13" />
+                <span class="opt-name">{{ p.name }}</span>
+                <span class="opt-count">{{ priorityCounts[p.id] ?? 0 }}</span>
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="menu-opt"
+                role="option"
+                :aria-selected="priorityIds.has(noPriorityId)"
+                @click="togglePriority(noPriorityId)"
+              >
+                <span class="check-box" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </span>
+                <PriorityIcon :size="13" />
+                <span class="opt-name muted">No priority</span>
+                <span class="opt-count">{{ noPriorityCount }}</span>
+              </button>
+            </li>
+          </ul>
+          <div class="menu-foot">
+            <span>Cards with any selected priority</span>
+            <button type="button" :disabled="!prioritiesActive" @click="clearPriorities">Clear</button>
           </div>
         </div>
       </div>
@@ -585,6 +692,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.opt-name.muted {
+  color: var(--muted);
 }
 .opt-count {
   font-size: 12px;

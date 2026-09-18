@@ -1,6 +1,6 @@
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
@@ -9,15 +9,16 @@ generator client {
 }
 
 model Board {
-  id        String   @id @db.VarChar(12) // nanoid public slug (URL)
-  title     String   @db.VarChar(255)
-  prefix    String   @db.VarChar(16) // e.g. "PROJ"
-  editHash  String   @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
-  nextSeq   Int      @default(1) @map("next_seq") // per-board card counter
-  createdAt DateTime @default(now()) @map("created_at")
-  cards     Card[]
-  tags      Tag[]
-  columns   Column[]
+  id         String     @id @db.VarChar(12) // nanoid public slug (URL)
+  title      String     @db.VarChar(255)
+  prefix     String     @db.VarChar(16) // e.g. "PROJ"
+  editHash   String     @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
+  nextSeq    Int        @default(1) @map("next_seq") // per-board card counter
+  createdAt  DateTime   @default(now()) @map("created_at")
+  cards      Card[]
+  tags       Tag[]
+  columns    Column[]
+  priorities Priority[]
 
   @@map("boards")
 }
@@ -46,21 +47,37 @@ model Column {
   @@map("board_columns")
 }
 
+model Priority {
+  id       Int    @id @default(autoincrement())
+  boardId  String @map("board_id") @db.VarChar(12)
+  name     String @db.VarChar(30)
+  color    String @db.VarChar(7)
+  position Int    @default(0) // 0 = most urgent
+  board    Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards    Card[]
+
+  @@index([boardId])
+  @@map("priorities")
+}
+
 model Card {
-  id        Int      @id @default(autoincrement())
-  boardId   String   @map("board_id") @db.VarChar(12)
-  seq       Int // display id = prefix + "-" + seq
-  title     String   @db.VarChar(255)
-  body      String?  @db.MediumText // markdown
-  columnId  Int      @map("column_id")
-  position  Int      @default(0) // order within a column
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  column    Column   @relation(fields: [columnId], references: [id])
-  tags      Tag[]
+  id         Int       @id @default(autoincrement())
+  boardId    String    @map("board_id") @db.VarChar(12)
+  seq        Int // display id = prefix + "-" + seq
+  title      String    @db.VarChar(255)
+  body       String?   @db.MediumText // markdown
+  columnId   Int       @map("column_id")
+  priorityId Int?      @map("priority_id")
+  position   Int       @default(0) // order within a column
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  board      Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column     Column    @relation(fields: [columnId], references: [id])
+  priority   Priority? @relation(fields: [priorityId], references: [id], onDelete: SetNull)
+  tags       Tag[]
 
   @@unique([boardId, seq])
   @@index([boardId, columnId])
+  @@index([priorityId])
   @@map("cards")
 }

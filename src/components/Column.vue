@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import draggable from "vuedraggable";
-import type { Card as CardType } from "../api";
+import type { Card as CardType, Priority } from "../api";
 import type { Density } from "../lib/density";
 import CardTile from "./Card.vue";
 
@@ -13,6 +13,7 @@ defineProps<{
   readOnly: boolean;
   disableDrag?: boolean;
   density: Density;
+  priorities: Priority[];
 }>();
 
 const emit = defineEmits<{
@@ -53,7 +54,7 @@ const emit = defineEmits<{
       @change="emit('change')"
     >
       <template #item="{ element }">
-        <CardTile :card="element" :prefix="prefix" :density="density" @open="emit('open', element)" />
+        <CardTile :card="element" :prefix="prefix" :density="density" :priorities="priorities" @open="emit('open', element)" />
       </template>
     </draggable>
 

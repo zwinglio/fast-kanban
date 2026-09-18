@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../auth.js";
 import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
+import { DEFAULT_PRIORITIES, MAX_PRIORITIES, isValidPriorityName } from "../priorities.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
 const nanoidKey = customAlphabet(
@@ -39,6 +40,9 @@ boards.post("/", async (c) => {
       columns: {
         create: DEFAULT_COLUMNS,
       },
+      priorities: {
+        create: DEFAULT_PRIORITIES,
+      },
     },
   });
 
@@ -51,7 +55,7 @@ boards.get("/:id", async (c) => {
   const board = await prisma.board.findUnique({ where: { id } });
   if (!board) return c.json({ error: "Board not found" }, 404);
 
-  const [cards, tags, columns] = await Promise.all([
+  const [cards, tags, columns, priorities] = await Promise.all([
     prisma.card.findMany({
       where: { boardId: id },
       orderBy: [{ columnId: "asc" }, { position: "asc" }],
@@ -65,6 +69,10 @@ boards.get("/:id", async (c) => {
       where: { boardId: id },
       orderBy: { position: "asc" },
     }),
+    prisma.priority.findMany({
+      where: { boardId: id },
+      orderBy: [{ position: "asc" }, { id: "asc" }],
+    }),
   ]);
 
   return c.json({
@@ -72,6 +80,7 @@ boards.get("/:id", async (c) => {
     cards,
     tags,
     columns,
+    priorities,
   });
 });
 
@@ -140,6 +149,17 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
     }
   }
 
+  // Optional priority; must belong to this board.
+  let priorityId: number | null = null;
+  if (body?.priorityId !== undefined && body.priorityId !== null) {
+    const pid = Number(body.priorityId);
+    const owned = Number.isInteger(pid)
+      ? await prisma.priority.findFirst({ where: { id: pid, boardId }, select: { id: true } })
+      : null;
+    if (!owned) return c.json({ error: "Invalid priority" }, 400);
+    priorityId = owned.id;
+  }
+
   const card = await prisma.$transaction(async (tx) => {
     const updatedBoard = await tx.board.update({
       where: { id: boardId },
@@ -159,6 +179,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
       title,
       body: cardBody,
       columnId,
+      priorityId,
       position,
     };
 
@@ -213,6 +234,40 @@ boards.post("/:id/columns", requireEditKey, async (c) => {
   });
 
   return c.json(column, 201);
+});
+
+// POST /api/boards/:id/priorities - create a priority, appended as least urgent (edit-key protected)
+boards.post("/:id/priorities", requireEditKey, async (c) => {
+  const boardId = c.req.param("id");
+  if (!boardId) return c.json({ error: "Missing board id" }, 400);
+  const body = await c.req.json().catch(() => null);
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  const color = typeof body?.color === "string" ? body.color : "";
+
+  if (!isValidPriorityName(name)) {
+    return c.json({ error: "Priority name must be 1-30 chars" }, 400);
+  }
+  if (!isValidPaletteColor(color)) {
+    return c.json({ error: "Invalid color" }, 400);
+  }
+
+  const existing = await prisma.priority.findMany({
+    where: { boardId },
+    select: { name: true, position: true },
+  });
+  if (existing.length >= MAX_PRIORITIES) {
+    return c.json({ error: `A board can have at most ${MAX_PRIORITIES} priorities` }, 400);
+  }
+  if (existing.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+    return c.json({ error: "A priority with this name already exists" }, 400);
+  }
+  const position = existing.reduce((max, p) => Math.max(max, p.position), -1) + 1;
+
+  const priority = await prisma.priority.create({
+    data: { boardId, name, color, position },
+  });
+
+  return c.json(priority, 201);
 });
 
 // POST /api/boards/:id/tags - create (or return existing) tag for a board (edit-key protected)

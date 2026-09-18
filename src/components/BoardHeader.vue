@@ -21,6 +21,7 @@ const emit = defineEmits<{
   enterKey: [];
   openColumns: [];
   openTags: [];
+  openPriorities: [];
   openGeneral: [];
 }>();
 </script>
@@ -70,6 +71,7 @@ const emit = defineEmits<{
         v-if="!readOnly"
         @open-columns="emit('openColumns')"
         @open-tags="emit('openTags')"
+        @open-priorities="emit('openPriorities')"
         @open-general="emit('openGeneral')"
       />
       <span class="tb-divider" aria-hidden="true" />

@@ -14,6 +14,14 @@ export interface Column {
   position: number;
 }
 
+export interface Priority {
+  id: number;
+  boardId: string;
+  name: string;
+  color: string;
+  position: number; // 0 = most urgent
+}
+
 export interface Card {
   id: number;
   boardId: string;
@@ -21,6 +29,7 @@ export interface Card {
   title: string;
   body: string | null;
   columnId: number;
+  priorityId: number | null;
   position: number;
   tags: Tag[];
   createdAt: string;
@@ -67,7 +76,7 @@ export function createBoard(title: string, prefix: string) {
 }
 
 export function getBoard(id: string) {
-  return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[] }>(`/boards/${id}`);
+  return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[]; priorities: Priority[] }>(`/boards/${id}`);
 }
 
 export function updateBoard(boardId: string, patch: { title: string }) {
@@ -85,7 +94,7 @@ export function verifyEditKey(id: string, key: string) {
 
 export function createCard(
   boardId: string,
-  payload: { title: string; body?: string; columnId?: number; tagIds?: number[] }
+  payload: { title: string; body?: string; columnId?: number; priorityId?: number | null; tagIds?: number[] }
 ) {
   return request<Card>(`/boards/${boardId}/cards`, {
     method: "POST",
@@ -96,7 +105,14 @@ export function createCard(
 export function updateCard(
   boardId: string,
   cardId: number,
-  payload: Partial<{ title: string; body: string | null; columnId: number; position: number; tagIds: number[] }>
+  payload: Partial<{
+    title: string;
+    body: string | null;
+    columnId: number;
+    priorityId: number | null;
+    position: number;
+    tagIds: number[];
+  }>
 ) {
   return request<Card>(`/cards/${cardId}`, {
     method: "PATCH",
@@ -142,6 +158,28 @@ export function updateColumn(boardId: string, columnId: number, patch: Partial<{
 
 export function deleteColumn(boardId: string, columnId: number) {
   return request<{ ok: true }>(`/columns/${columnId}`, { method: "DELETE" }, boardId);
+}
+
+export function createPriority(boardId: string, name: string, color: string) {
+  return request<Priority>(`/boards/${boardId}/priorities`, {
+    method: "POST",
+    body: JSON.stringify({ name, color }),
+  }, boardId);
+}
+
+export function updatePriority(
+  boardId: string,
+  priorityId: number,
+  patch: Partial<{ name: string; color: string; position: number }>
+) {
+  return request<Priority>(`/priorities/${priorityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }, boardId);
+}
+
+export function deletePriority(boardId: string, priorityId: number) {
+  return request<{ ok: true }>(`/priorities/${priorityId}`, { method: "DELETE" }, boardId);
 }
 
 export { ApiError };

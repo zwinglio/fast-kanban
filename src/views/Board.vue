@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag } from "../api";
+import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag, type Priority } from "../api";
 import { getEditKey, setEditKey } from "../lib/editKey";
 import { rememberBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
 import BoardSettings from "../components/BoardSettings.vue";
+import PrioritiesSettings from "../components/PrioritiesSettings.vue";
 import TagsSettings from "../components/TagsSettings.vue";
 import GeneralSettings from "../components/GeneralSettings.vue";
 import FilterBar from "../components/FilterBar.vue";
@@ -25,7 +26,9 @@ const boardColumns = ref<Column[]>([]);
 const columns = reactive<Record<number, Card[]>>({});
 
 const boardTags = ref<Tag[]>([]);
+const boardPriorities = ref<Priority[]>([]);
 const activeTagIds = ref<Set<number>>(new Set());
+const activePriorityIds = ref<Set<number>>(new Set()); // NO_PRIORITY = cards without one
 const activeColumnIds = ref<Set<number>>(new Set());
 const searchQuery = ref("");
 
@@ -39,7 +42,7 @@ const keyInput = ref("");
 const keyEntryError = ref("");
 const keyEntryLoading = ref(false);
 
-const activePanel = ref<"columns" | "tags" | "general" | null>(null);
+const activePanel = ref<"columns" | "tags" | "priorities" | "general" | null>(null);
 const density = ref<Density>(getDensity(boardId));
 
 const vFocus = { mounted: (el: HTMLElement) => el.focus() };
@@ -48,6 +51,8 @@ function onDensityChange(next: Density) {
   density.value = next;
   setDensity(boardId, next);
 }
+
+const NO_PRIORITY = 0; // priority ids are autoincrement, so 0 never collides
 
 const modalState = ref<{ mode: "edit" | "create"; card: Card | null; columnId?: number } | null>(
   null
@@ -68,6 +73,16 @@ function fillColumns(cards: Card[]) {
   }
 }
 
+function cardCountsByPriority(): Record<number, number> {
+  const counts: Record<number, number> = {};
+  for (const col of boardColumns.value) {
+    for (const card of columns[col.id] ?? []) {
+      if (card.priorityId !== null) counts[card.priorityId] = (counts[card.priorityId] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function cardCountsByColumn(): Record<number, number> {
   const counts: Record<number, number> = {};
   for (const col of boardColumns.value) {
@@ -76,15 +91,29 @@ function cardCountsByColumn(): Record<number, number> {
   return counts;
 }
 
-async function load() {
-  loading.value = true;
+// `quiet` refreshes in place (after settings changes) without the loading screen,
+// keeping open panels mounted and the current filters where they still apply.
+async function load(opts: { quiet?: boolean } = {}) {
+  if (!opts.quiet) loading.value = true;
   loadError.value = "";
   try {
     const data = await getBoard(boardId);
+    const knownColumnIds = new Set(boardColumns.value.map((c) => c.id));
     board.value = data.board;
     boardColumns.value = data.columns ?? [];
     boardTags.value = data.tags ?? [];
-    activeColumnIds.value = new Set(boardColumns.value.map((c) => c.id));
+    boardPriorities.value = data.priorities ?? [];
+    activeColumnIds.value = opts.quiet
+      ? new Set(
+          boardColumns.value
+            .map((c) => c.id)
+            .filter((id) => activeColumnIds.value.has(id) || !knownColumnIds.has(id))
+        )
+      : new Set(boardColumns.value.map((c) => c.id));
+    const priorityIds = new Set(boardPriorities.value.map((p) => p.id));
+    activePriorityIds.value = new Set(
+      [...activePriorityIds.value].filter((id) => id === NO_PRIORITY || priorityIds.has(id))
+    );
     fillColumns(data.cards);
     document.title = `${data.board.title} - Fast Kanban`;
   } catch (e) {
@@ -171,6 +200,7 @@ const searchTerms = computed(() => searchQuery.value.trim().toLowerCase().split(
 const filterActive = computed(
   () =>
     activeTagIds.value.size > 0 ||
+    activePriorityIds.value.size > 0 ||
     activeColumnIds.value.size < boardColumns.value.length ||
     searchTerms.value.length > 0
 );
@@ -182,6 +212,7 @@ function cardSearchText(card: Card): string {
     card.title,
     card.body ?? "",
     ...(card.tags ?? []).map((t) => t.name),
+    boardPriorities.value.find((p) => p.id === card.priorityId)?.name ?? "",
   ]
     .join("\n")
     .toLowerCase();
@@ -190,6 +221,7 @@ function cardSearchText(card: Card): string {
 function cardMatchesFilters(card: Card): boolean {
   if (!activeColumnIds.value.has(card.columnId)) return false;
   if (activeTagIds.value.size > 0 && !(card.tags ?? []).some((t) => activeTagIds.value.has(t.id))) return false;
+  if (activePriorityIds.value.size > 0 && !activePriorityIds.value.has(card.priorityId ?? NO_PRIORITY)) return false;
   if (searchTerms.value.length) {
     const text = cardSearchText(card);
     if (!searchTerms.value.every((term) => text.includes(term))) return false;
@@ -282,7 +314,7 @@ async function submitKeyEntry() {
 }
 
 async function onSettingsChanged() {
-  await load();
+  await load({ quiet: true });
 }
 
 function onBoardSaved(updated: Board) {
@@ -310,6 +342,7 @@ function onBoardSaved(updated: Board) {
         @enter-key="showKeyEntry = true"
         @open-columns="activePanel = 'columns'"
         @open-tags="activePanel = 'tags'"
+        @open-priorities="activePanel = 'priorities'"
         @open-general="activePanel = 'general'"
       />
 
@@ -360,6 +393,10 @@ function onBoardSaved(updated: Board) {
         v-model:tag-ids="activeTagIds"
         v-model:column-ids="activeColumnIds"
         v-model:query="searchQuery"
+        v-model:priority-ids="activePriorityIds"
+        :priorities="boardPriorities"
+        :priority-counts="cardCountsByPriority()"
+        :no-priority-id="NO_PRIORITY"
         :tags="boardTags"
         :columns="boardColumns"
         :card-counts="cardCountsByColumn()"
@@ -381,6 +418,7 @@ function onBoardSaved(updated: Board) {
           :read-only="readOnly"
           :disable-drag="filterActive"
           :density="density"
+          :priorities="boardPriorities"
           @change="persistColumnOrder(col.id)"
           @open="openCard"
           @add-card="openAddCard(col.id)"
@@ -397,6 +435,7 @@ function onBoardSaved(updated: Board) {
         :initial-column-id="modalState.columnId"
         :board-tags="boardTags"
         :board-columns="boardColumns"
+        :board-priorities="boardPriorities"
         @close="closeModal"
         @saved="onSaved"
         @deleted="onDeleted"
@@ -407,6 +446,15 @@ function onBoardSaved(updated: Board) {
         :board-id="boardId"
         :columns="boardColumns"
         :card-counts="cardCountsByColumn()"
+        @close="activePanel = null"
+        @changed="onSettingsChanged"
+      />
+
+      <PrioritiesSettings
+        v-if="activePanel === 'priorities'"
+        :board-id="boardId"
+        :priorities="boardPriorities"
+        :card-counts="cardCountsByPriority()"
         @close="activePanel = null"
         @changed="onSettingsChanged"
       />

@@ -58,6 +58,21 @@ cards.patch("/:id", async (c) => {
     }
     data.position = position;
   }
+  if (body.priorityId !== undefined) {
+    if (body.priorityId === null) {
+      data.priorityId = null;
+    } else {
+      const priorityId = Number(body.priorityId);
+      const owned = Number.isInteger(priorityId)
+        ? await prisma.priority.findFirst({
+            where: { id: priorityId, boardId: check.card.boardId },
+            select: { id: true },
+          })
+        : null;
+      if (!owned) return c.json({ error: "Invalid priority" }, 400);
+      data.priorityId = priorityId;
+    }
+  }
 
   // When tagIds is present, replace the card's tag set (only with tags owned by this board).
   if (Array.isArray(body.tagIds)) {

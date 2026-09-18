@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { createCard, updateCard, deleteCard, ApiError, type Card, type Column, type Tag } from "../api";
+import { createCard, updateCard, deleteCard, ApiError, type Card, type Column, type Priority, type Tag } from "../api";
 import { renderMarkdown } from "../lib/markdown";
+import PriorityIcon from "./PriorityIcon.vue";
 
 const props = defineProps<{
   boardId: string;
@@ -12,6 +13,7 @@ const props = defineProps<{
   initialColumnId?: number;
   boardTags: Tag[];
   boardColumns: Column[];
+  boardPriorities: Priority[];
 }>();
 
 const emit = defineEmits<{
@@ -24,6 +26,7 @@ const isNew = props.card === null;
 const title = ref(props.card?.title ?? "");
 const body = ref(props.card?.body ?? "");
 const columnId = ref<number>(props.card?.columnId ?? props.initialColumnId ?? props.boardColumns[0]?.id ?? 0);
+const priorityId = ref<number | null>(props.card?.priorityId ?? null);
 const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
 // Description opens straight into edit mode; read-only viewers only ever see the preview.
 const mode = ref<"edit" | "preview">(props.readOnly ? "preview" : "edit");
@@ -38,12 +41,13 @@ const titleEl = ref<HTMLTextAreaElement | null>(null);
 const bodyEl = ref<HTMLTextAreaElement | null>(null);
 const tagPickerEl = ref<HTMLElement | null>(null);
 
-const snapshot = JSON.stringify([title.value, body.value, columnId.value, [...selectedTagIds.value].sort()]);
+const snapshot = JSON.stringify([title.value, body.value, columnId.value, priorityId.value, [...selectedTagIds.value].sort()]);
 const dirty = computed(
-  () => JSON.stringify([title.value, body.value, columnId.value, [...selectedTagIds.value].sort()]) !== snapshot
+  () => JSON.stringify([title.value, body.value, columnId.value, priorityId.value, [...selectedTagIds.value].sort()]) !== snapshot
 );
 
 const displayId = computed(() => (props.card ? `${props.prefix}-${props.card.seq}` : "New card"));
+const currentPriority = computed(() => props.boardPriorities.find((p) => p.id === priorityId.value) ?? null);
 const currentColumn = computed(() => props.boardColumns.find((c) => c.id === columnId.value));
 const selectedTags = computed(() => props.boardTags.filter((t) => selectedTagIds.value.includes(t.id)));
 const availableTags = computed(() => props.boardTags.filter((t) => !selectedTagIds.value.includes(t.id)));
@@ -97,6 +101,7 @@ async function save(opts: { usePlaceholder?: boolean } = {}) {
         title: trimmedTitle,
         body: body.value,
         columnId: columnId.value,
+        priorityId: priorityId.value,
         tagIds: selectedTagIds.value,
       });
       emit("saved", created);
@@ -105,6 +110,7 @@ async function save(opts: { usePlaceholder?: boolean } = {}) {
         title: trimmedTitle,
         body: body.value,
         columnId: columnId.value,
+        priorityId: priorityId.value,
         tagIds: selectedTagIds.value,
       });
       emit("saved", updated);
@@ -262,6 +268,20 @@ onBeforeUnmount(() => {
               <span class="dot" :style="{ background: currentColumn?.color || 'var(--muted)' }" />
               <select v-model="columnId" :disabled="readOnly" aria-label="Column">
                 <option v-for="col in boardColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
+              </select>
+              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </div>
+          </section>
+
+          <section class="rail-sec">
+            <div class="rail-sec-head"><span class="label">Priority</span></div>
+            <div class="select-wrap">
+              <span class="select-icon"><PriorityIcon :color="currentPriority?.color" :size="14" /></span>
+              <select v-model="priorityId" :disabled="readOnly" aria-label="Priority">
+                <option :value="null">No priority</option>
+                <option v-for="p in boardPriorities" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
               <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M6 9l6 6 6-6" />
@@ -675,6 +695,11 @@ onBeforeUnmount(() => {
 .select-wrap .dot {
   position: absolute;
   left: 11px;
+  pointer-events: none;
+}
+.select-wrap .select-icon {
+  position: absolute;
+  left: 9px;
   pointer-events: none;
 }
 .select-wrap .chev {

@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { Card } from "../api";
+import type { Card, Priority } from "../api";
+import PriorityIcon from "./PriorityIcon.vue";
 import type { Density } from "../lib/density";
 
 const props = defineProps<{
   card: Card;
   prefix: string;
   density: Density;
+  priorities: Priority[];
 }>();
 
 defineEmits<{ open: [] }>();
 
 const displayId = computed(() => `${props.prefix}-${props.card.seq}`);
+const priority = computed(() =>
+  props.card.priorityId === null ? null : props.priorities.find((p) => p.id === props.card.priorityId) ?? null
+);
 const hasBody = computed(() => !!props.card.body?.trim());
 
 // Plain-text excerpt for the comfortable density; strips the common markdown syntax.
@@ -47,10 +52,22 @@ const updatedLabel = computed(() => {
   >
     <div class="card-top">
       <span class="card-id">{{ displayId }}</span>
-      <span v-if="hasBody && density !== 'comfortable'" class="has-body" title="Has description" aria-label="Has description">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M4 6h16M4 12h16M4 18h10" />
-        </svg>
+      <span class="card-signals">
+        <span v-if="hasBody && density !== 'comfortable'" class="has-body" title="Has description" aria-label="Has description">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
+        </span>
+        <span
+          v-if="priority"
+          class="card-priority"
+          :class="{ 'icon-only': density === 'compact' }"
+          :style="{ '--p': priority.color }"
+          :title="`Priority: ${priority.name}`"
+        >
+          <PriorityIcon :color="priority.color" :size="12" />
+          <span v-if="density !== 'compact'">{{ priority.name }}</span>
+        </span>
       </span>
     </div>
 
@@ -104,6 +121,37 @@ const updatedLabel = computed(() => {
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--accent);
+}
+
+.card-signals {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 120px;
+  padding: 1px 7px 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--p) 14%, transparent);
+  color: color-mix(in srgb, var(--p) 75%, var(--text));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.card-priority span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-priority.icon-only {
+  padding: 0;
+  background: none;
 }
 
 .has-body {

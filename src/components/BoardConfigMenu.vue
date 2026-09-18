@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 const emit = defineEmits<{
   openColumns: [];
   openTags: [];
+  openPriorities: [];
   openGeneral: [];
 }>();
 
@@ -22,6 +23,11 @@ function openColumns() {
 function openTags() {
   open.value = false;
   emit("openTags");
+}
+
+function openPriorities() {
+  open.value = false;
+  emit("openPriorities");
 }
 
 function openGeneral() {
@@ -81,6 +87,14 @@ onUnmounted(() => {
           </svg>
         </span>
         <span>Tags</span>
+      </button>
+      <button class="config-item" type="button" @click="openPriorities">
+        <span class="config-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 21V4.5M5 4.5c2.5-1.6 5-1.6 7.5 0s5 1.6 7.5 0v9c-2.5 1.6-5 1.6-7.5 0s-5-1.6-7.5 0" />
+          </svg>
+        </span>
+        <span>Priorities</span>
       </button>
       <button class="config-item" type="button" @click="openGeneral">
         <span class="config-icon" aria-hidden="true">
