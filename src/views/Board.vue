@@ -408,6 +408,7 @@ function onBoardSaved(updated: Board) {
         v-if="modalState"
         :board-id="boardId"
         :prefix="board.prefix"
+        :board-title="board.title"
         :read-only="readOnly"
         :card="modalState.card"
         :initial-column-id="modalState.columnId"
