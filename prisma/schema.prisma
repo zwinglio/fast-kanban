@@ -12,6 +12,7 @@ model Board {
   id                  String     @id @db.VarChar(12) // nanoid public slug (URL)
   title               String     @db.VarChar(255)
   prefix              String     @db.VarChar(16) // e.g. "PROJ"
+  icon                String?    @db.VarChar(24) // one of the built-in board icons; null = first letter of the title
   editHash            String     @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
   nextSeq             Int        @default(1) @map("next_seq") // per-board card counter
   pointsEnabled       Boolean    @default(false) @map("points_enabled") // story points are opt-in per board

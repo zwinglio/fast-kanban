@@ -42,6 +42,7 @@ export interface Board {
   id: string;
   title: string;
   prefix: string;
+  icon: string | null; // built-in board icon id; null = first letter of the title
   nextSeq: number; // number the next created card will get
   pointsEnabled: boolean; // story points are opt-in per board
   dependenciesEnabled: boolean; // "blocked by" links are opt-in per board
@@ -92,7 +93,13 @@ export function getBoard(id: string) {
 
 export function updateBoard(
   boardId: string,
-  patch: Partial<{ title: string; nextSeq: number; pointsEnabled: boolean; dependenciesEnabled: boolean }>
+  patch: Partial<{
+    title: string;
+    icon: string | null;
+    nextSeq: number;
+    pointsEnabled: boolean;
+    dependenciesEnabled: boolean;
+  }>
 ) {
   return request<Board>(`/boards/${boardId}`, {
     method: "PATCH",

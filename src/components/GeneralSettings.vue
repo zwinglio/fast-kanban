@@ -4,11 +4,14 @@ import { updateBoard, ApiError, type Board } from "../api";
 import { DENSITIES, type Density } from "../lib/density";
 import ModalShell from "./ModalShell.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
+import BoardIcon from "./BoardIcon.vue";
+import { BOARD_ICONS } from "../lib/boardIcons";
 
 const props = defineProps<{
   boardId: string;
   title: string;
   prefix: string;
+  icon: string | null;
   density: Density;
   nextSeq: number;
   highestSeq: number; // highest card number in use, archived cards included
@@ -23,6 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const title = ref(props.title);
+const icon = ref<string | null>(props.icon);
 const density = ref<Density>(props.density);
 // The stored counter can lag behind if cards were created in this session.
 const currentNext = Math.max(props.nextSeq, props.highestSeq + 1);
@@ -52,7 +56,14 @@ async function save() {
   }
   if (density.value !== props.density) emit("update:density", density.value);
 
-  const patch: { title?: string; nextSeq?: number; pointsEnabled?: boolean; dependenciesEnabled?: boolean } = {};
+  const patch: {
+    title?: string;
+    icon?: string | null;
+    nextSeq?: number;
+    pointsEnabled?: boolean;
+    dependenciesEnabled?: boolean;
+  } = {};
+  if (icon.value !== props.icon) patch.icon = icon.value;
   if (pointsEnabled.value !== props.pointsEnabled) patch.pointsEnabled = pointsEnabled.value;
   if (dependenciesEnabled.value !== props.dependenciesEnabled) patch.dependenciesEnabled = dependenciesEnabled.value;
   if (trimmed !== props.title) patch.title = trimmed;
@@ -75,21 +86,56 @@ async function save() {
 </script>
 
 <template>
-  <ModalShell title="General" subtitle="Board name, identifier and layout." :width="520" @close="emit('close')">
+  <ModalShell title="General" subtitle="Board name, icon, identifier and layout." :width="520" @close="emit('close')">
     <section class="sheet-section">
       <div class="sheet-section-head">
         <label class="sheet-label" for="board-title">Title</label>
       </div>
-      <input
-        id="board-title"
-        ref="titleEl"
-        v-model="title"
-        type="text"
-        maxlength="255"
-        class="sheet-input"
-        placeholder="Board title"
-        @keydown.enter.prevent="save"
-      />
+      <div class="title-row">
+        <BoardIcon :icon="icon" :title="title" :size="36" />
+        <input
+          id="board-title"
+          ref="titleEl"
+          v-model="title"
+          type="text"
+          maxlength="255"
+          class="sheet-input"
+          placeholder="Board title"
+          @keydown.enter.prevent="save"
+        />
+      </div>
+    </section>
+
+    <section class="sheet-section">
+      <div class="sheet-section-head">
+        <span class="sheet-label">Icon</span>
+      </div>
+      <div class="icon-grid" role="radiogroup" aria-label="Board icon">
+        <button
+          type="button"
+          role="radio"
+          class="icon-opt"
+          :aria-checked="icon === null"
+          title="First letter of the title"
+          @click="icon = null"
+        >
+          <BoardIcon :title="title" :size="30" :muted="icon !== null" />
+        </button>
+        <button
+          v-for="opt in BOARD_ICONS"
+          :key="opt.id"
+          type="button"
+          role="radio"
+          class="icon-opt"
+          :aria-checked="icon === opt.id"
+          :title="opt.label"
+          :aria-label="opt.label"
+          @click="icon = opt.id"
+        >
+          <BoardIcon :icon="opt.id" :size="30" :muted="icon !== opt.id" />
+        </button>
+      </div>
+      <p class="sheet-note">Shown in the header, the board switcher and your recent boards.</p>
     </section>
 
     <section class="sheet-section">
@@ -194,6 +240,42 @@ async function save() {
 </template>
 
 <style scoped>
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.title-row .sheet-input {
+  flex: 1;
+}
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 6px;
+}
+.icon-opt {
+  display: grid;
+  place-items: center;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.icon-opt:hover {
+  border-color: color-mix(in srgb, var(--border) 45%, var(--text));
+}
+.icon-opt[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.icon-opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .toggle-gap {
   margin-top: 8px;
 }

@@ -158,7 +158,7 @@ onMounted(async () => {
   await load();
   await checkEditAccess();
   if (board.value) {
-    rememberBoard({ id: boardId, title: board.value.title, hasKey: !readOnly.value });
+    rememberBoard({ id: boardId, title: board.value.title, hasKey: !readOnly.value, icon: board.value.icon });
   }
   syncModalFromRoute();
 });
@@ -401,7 +401,7 @@ async function submitKeyEntry() {
     }
     setEditKey(boardId, key);
     readOnly.value = false;
-    rememberBoard({ id: boardId, title: board.value?.title ?? "", hasKey: true });
+    rememberBoard({ id: boardId, title: board.value?.title ?? "", hasKey: true, icon: board.value?.icon ?? null });
     showKeyEntry.value = false;
     keyInput.value = "";
   } catch {
@@ -419,6 +419,7 @@ function onBoardSaved(updated: Board) {
   if (board.value) {
     board.value = updated;
     document.title = `${updated.title} - Fast Kanban`;
+    rememberBoard({ id: boardId, title: updated.title, hasKey: !readOnly.value, icon: updated.icon });
   }
   activePanel.value = null;
 }
@@ -433,6 +434,7 @@ function onBoardSaved(updated: Board) {
         :board-id="boardId"
         :title="board.title"
         :prefix="board.prefix"
+        :icon="board.icon"
         :read-only="readOnly"
         :card-count="totalCards"
         :archived-count="archivedCards.length"
@@ -586,6 +588,7 @@ function onBoardSaved(updated: Board) {
         :board-id="boardId"
         :title="board.title"
         :prefix="board.prefix"
+        :icon="board.icon"
         :density="density"
         :next-seq="board.nextSeq"
         :points-enabled="board.pointsEnabled"

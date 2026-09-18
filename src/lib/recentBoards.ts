@@ -6,6 +6,7 @@ export interface RecentBoard {
   title: string;
   hasKey: boolean;
   lastAccessed: number;
+  icon?: string | null; // remembered from the last visit; older entries don't have it
 }
 
 function isRecentBoard(value: unknown): value is RecentBoard {
@@ -40,7 +41,7 @@ function save(boards: RecentBoard[]): void {
   }
 }
 
-export function rememberBoard(board: { id: string; title: string; hasKey: boolean }): void {
+export function rememberBoard(board: { id: string; title: string; hasKey: boolean; icon?: string | null }): void {
   const rest = getRecentBoards().filter((b) => b.id !== board.id);
   const next = [{ ...board, lastAccessed: Date.now() }, ...rest].slice(0, MAX_ENTRIES);
   save(next);

@@ -5,6 +5,7 @@ import { createBoard, ApiError } from "../api";
 import { setEditKey } from "../lib/editKey";
 import { forgetBoard, getRecentBoards, type RecentBoard } from "../lib/recentBoards";
 import ThemeToggle from "../components/ThemeToggle.vue";
+import BoardIcon from "../components/BoardIcon.vue";
 
 const MAX_SEQ = 999_999;
 const RECENT_PREVIEW = 5;
@@ -26,10 +27,6 @@ const visibleRecent = computed(() =>
 function removeRecent(id: string) {
   forgetBoard(id);
   recent.value = getRecentBoards();
-}
-
-function initial(title: string) {
-  return title.trim().charAt(0) || "?";
 }
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
@@ -204,7 +201,7 @@ async function submit() {
           <ul class="recent-list">
             <li v-for="b in visibleRecent" :key="b.id" class="recent-row">
               <router-link :to="{ name: 'board', params: { id: b.id } }" class="recent-link">
-                <span class="board-icon">{{ initial(b.title) }}</span>
+                <BoardIcon :icon="b.icon" :title="b.title" :size="30" />
                 <span class="recent-text">
                   <span class="recent-title">{{ b.title || "Untitled board" }}</span>
                   <span class="recent-meta">Visited {{ visitedLabel(b.lastAccessed) }}</span>
@@ -603,19 +600,6 @@ form.panel-body {
 .recent-link:focus-visible {
   background: var(--soft);
   outline: none;
-}
-.board-icon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
 }
 .recent-text {
   flex: 1;

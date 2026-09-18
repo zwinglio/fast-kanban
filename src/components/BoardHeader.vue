@@ -2,11 +2,13 @@
 import BoardSwitcher from "./BoardSwitcher.vue";
 import BoardConfigMenu from "./BoardConfigMenu.vue";
 import ThemeToggle from "./ThemeToggle.vue";
+import BoardIcon from "./BoardIcon.vue";
 
 defineProps<{
   boardId: string;
   title: string;
   prefix: string;
+  icon: string | null;
   readOnly: boolean;
   cardCount: number;
   columnCount: number;
@@ -30,11 +32,21 @@ const emit = defineEmits<{
 <template>
   <header class="topbar">
     <div class="tb-left">
-      <router-link to="/" class="brand" title="Fast Kanban — create a board" aria-label="Fast Kanban home">
-        <img src="/favicon.svg" alt="" width="24" height="24" />
-      </router-link>
+      <button
+        v-if="!readOnly"
+        type="button"
+        class="brand"
+        title="Change board icon"
+        aria-label="Change board icon"
+        @click="emit('openGeneral')"
+      >
+        <BoardIcon :icon="icon" :title="title" :size="42" />
+      </button>
+      <span v-else class="brand static">
+        <BoardIcon :icon="icon" :title="title" :size="42" />
+      </span>
       <div class="tb-titles">
-        <BoardSwitcher :current-id="boardId" :current-title="title" :current-has-key="!readOnly" />
+        <BoardSwitcher :current-id="boardId" :current-title="title" :current-has-key="!readOnly" :current-icon="icon" />
         <div class="tb-meta">
           <span class="tb-key" title="Card ID prefix">{{ prefix }}</span>
           <span>{{ plural(cardCount, "card") }}</span>
@@ -107,16 +119,21 @@ const emit = defineEmits<{
   width: 44px;
   height: 44px;
   flex: none;
-  border: 1px solid var(--border);
+  padding: 0;
+  border: 0;
   border-radius: 12px;
-  background: var(--panel);
-  transition: border-color 0.15s ease;
+  background: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.brand:hover {
-  border-color: color-mix(in srgb, var(--border) 45%, var(--text));
+button.brand:hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.brand img {
-  display: block;
+button.brand:active {
+  transform: scale(0.97);
+}
+button.brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .tb-titles {
@@ -214,11 +231,6 @@ const emit = defineEmits<{
 }
 
 @media (max-width: 640px) {
-  .brand {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-  }
   .tb-left {
     gap: 10px;
   }

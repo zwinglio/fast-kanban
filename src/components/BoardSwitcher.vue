@@ -2,11 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { forgetBoard, getRecentBoards, type RecentBoard } from "../lib/recentBoards";
+import BoardIcon from "./BoardIcon.vue";
 
 const props = defineProps<{
   currentId: string;
   currentTitle: string;
   currentHasKey: boolean;
+  currentIcon: string | null;
 }>();
 
 const router = useRouter();
@@ -19,6 +21,7 @@ const entries = computed<RecentBoard[]>(() => [
     id: props.currentId,
     title: props.currentTitle,
     hasKey: props.currentHasKey,
+    icon: props.currentIcon,
     lastAccessed: Date.now(),
   },
   ...stored.value.filter((b) => b.id !== props.currentId),
@@ -37,10 +40,6 @@ function goTo(id: string) {
   if (id === props.currentId) return;
   open.value = false;
   router.push({ name: "board", params: { id } });
-}
-
-function initial(title: string) {
-  return title.trim().charAt(0) || "?";
 }
 
 function remove(id: string) {
@@ -93,7 +92,7 @@ onUnmounted(() => {
       <ul class="panel-list">
         <li class="row current">
           <div class="row-main" aria-current="page">
-            <span class="board-icon">{{ initial(currentTitle) }}</span>
+            <BoardIcon :icon="currentIcon" :title="currentTitle" :size="24" />
             <span class="row-title">{{ currentTitle }}</span>
             <span v-if="!currentHasKey" class="ro-badge">Read-only</span>
             <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -103,7 +102,7 @@ onUnmounted(() => {
         </li>
         <li v-for="b in entries.slice(1)" :key="b.id" class="row">
           <button class="row-main" type="button" role="menuitem" @click="goTo(b.id)">
-            <span class="board-icon">{{ initial(b.title) }}</span>
+            <BoardIcon :icon="b.icon" :title="b.title" :size="24" muted />
             <span class="row-title">{{ b.title || "Untitled board" }}</span>
             <span v-if="!b.hasKey" class="ro-badge">Read-only</span>
           </button>
@@ -256,26 +255,6 @@ button.row-main:focus-visible {
 }
 .row:not(.current) .row-main {
   padding-right: 34px;
-}
-
-.board-icon {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  border-radius: 6px;
-  background: var(--soft);
-  border: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-.row.current .board-icon {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 .row-title {

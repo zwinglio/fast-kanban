@@ -6,6 +6,7 @@ import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../au
 import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
 import { eventRows } from "../events.js";
 import { MAX_POINTS, parsePoints } from "../points.js";
+import { isValidBoardIcon } from "../boardIcons.js";
 import { DEFAULT_PRIORITIES, MAX_PRIORITIES, isValidPriorityName } from "../priorities.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
@@ -28,6 +29,7 @@ function publicBoard(board: {
   id: string;
   title: string;
   prefix: string;
+  icon: string | null;
   nextSeq: number;
   pointsEnabled: boolean;
   dependenciesEnabled: boolean;
@@ -36,6 +38,7 @@ function publicBoard(board: {
     id: board.id,
     title: board.title,
     prefix: board.prefix,
+    icon: board.icon,
     nextSeq: board.nextSeq,
     pointsEnabled: board.pointsEnabled,
     dependenciesEnabled: board.dependenciesEnabled,
@@ -134,7 +137,20 @@ boards.patch("/:id", requireEditKey, async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "Invalid body" }, 400);
 
-  const data: { title?: string; nextSeq?: number; pointsEnabled?: boolean; dependenciesEnabled?: boolean } = {};
+  const data: {
+    title?: string;
+    icon?: string | null;
+    nextSeq?: number;
+    pointsEnabled?: boolean;
+    dependenciesEnabled?: boolean;
+  } = {};
+
+  if (body.icon !== undefined) {
+    if (body.icon !== null && !isValidBoardIcon(body.icon)) {
+      return c.json({ error: "Unknown board icon" }, 400);
+    }
+    data.icon = body.icon;
+  }
 
   if (body.title !== undefined) {
     const title = typeof body.title === "string" ? body.title.trim() : "";
