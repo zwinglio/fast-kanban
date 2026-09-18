@@ -78,6 +78,16 @@ const updatedLabel = computed(() => {
           </svg>
         </span>
         <span
+          v-if="card.commentCount"
+          class="comment-count"
+          :title="`${card.commentCount} ${card.commentCount === 1 ? 'comment' : 'comments'}`"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z" />
+          </svg>
+          {{ card.commentCount }}
+        </span>
+        <span
           v-if="pointsEnabled && card.points !== null"
           class="card-points"
           :title="`${card.points} story ${card.points === 1 ? 'point' : 'points'}`"
@@ -220,6 +230,20 @@ const updatedLabel = computed(() => {
 .d-compact .blocked-chip {
   padding: 0;
   background: none;
+}
+
+.comment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.comment-count svg {
+  width: 12px;
+  height: 12px;
 }
 
 .card-points {

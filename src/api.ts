@@ -33,6 +33,7 @@ export interface Card {
   points: number | null; // story points; null = not estimated
   position: number;
   archivedAt: string | null;
+  commentCount: number;
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
@@ -195,14 +196,31 @@ export type CardEvent =
   | { id: number; createdAt: string; type: "moved"; data: { from: string; to: string } }
   | { id: number; createdAt: string; type: "title"; data: { from: string; to: string } }
   | { id: number; createdAt: string; type: "description"; data: null }
-  | { id: number; createdAt: string; type: "priority"; data: { from: string | null; to: string | null } }
-  | { id: number; createdAt: string; type: "tags"; data: { added: string[]; removed: string[] } }
+  | {
+      id: number;
+      createdAt: string;
+      type: "priority";
+      data: { from: string | null; to: string | null; reason?: "deleted" };
+    }
+  | { id: number; createdAt: string; type: "tags"; data: { added: string[]; removed: string[]; reason?: "deleted" } }
   | { id: number; createdAt: string; type: "points"; data: { from: number | null; to: number | null } }
   | {
       id: number;
       createdAt: string;
+      type: "comment";
+      data: { action: "added" | "edited" | "deleted"; author: string | null; excerpt: string };
+    }
+  | {
+      id: number;
+      createdAt: string;
       type: "dependency";
-      data: { action: "added" | "removed"; role: "blocked_by" | "blocks"; card: string; title: string };
+      data: {
+        action: "added" | "removed";
+        role: "blocked_by" | "blocks";
+        card: string;
+        title: string;
+        reason?: "deleted";
+      };
     }
   | { id: number; createdAt: string; type: "archived" | "restored"; data: null };
 
@@ -214,6 +232,43 @@ export function getCardEvents(cardId: number, opts: { limit?: number; before?: n
   return request<{ events: CardEvent[]; hasMore: boolean; total: number }>(
     `/cards/${cardId}/events${qs ? `?${qs}` : ""}`
   );
+}
+
+export interface CardComment {
+  id: number;
+  cardId: number;
+  author: string | null; // null = anonymous
+  body: string; // markdown
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function getComments(cardId: number, opts: { limit?: number; before?: number } = {}) {
+  const params = new URLSearchParams();
+  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.before !== undefined) params.set("before", String(opts.before));
+  const qs = params.toString();
+  return request<{ comments: CardComment[]; hasMore: boolean; total: number }>(
+    `/cards/${cardId}/comments${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function addComment(boardId: string, cardId: number, body: string, author: string | null) {
+  return request<CardComment>(`/cards/${cardId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, author }),
+  }, boardId);
+}
+
+export function editComment(boardId: string, commentId: number, body: string) {
+  return request<CardComment>(`/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  }, boardId);
+}
+
+export function deleteComment(boardId: string, commentId: number) {
+  return request<{ ok: true }>(`/comments/${commentId}`, { method: "DELETE" }, boardId);
 }
 
 export function addDependency(boardId: string, blockedId: number, blockerId: number) {

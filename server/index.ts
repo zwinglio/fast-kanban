@@ -6,6 +6,7 @@ import { cards } from "./routes/cards.js";
 import { columns } from "./routes/columns.js";
 import { tags } from "./routes/tags.js";
 import { priorities } from "./routes/priorities.js";
+import { comments } from "./routes/comments.js";
 
 const app = new Hono();
 
@@ -14,6 +15,7 @@ app.route("/api/cards", cards);
 app.route("/api/columns", columns);
 app.route("/api/tags", tags);
 app.route("/api/priorities", priorities);
+app.route("/api/comments", comments);
 
 // Serve the built SPA. This bundled server is only ever run in production
 // (local dev uses the Vite dev server instead), so no env-var gate is needed

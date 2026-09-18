@@ -7,13 +7,20 @@ export type CardEventInput =
   | { type: "moved"; data: { from: string; to: string } }
   | { type: "title"; data: { from: string; to: string } }
   | { type: "description"; data: null }
-  | { type: "priority"; data: { from: string | null; to: string | null } }
-  | { type: "tags"; data: { added: string[]; removed: string[] } }
+  | { type: "priority"; data: { from: string | null; to: string | null; reason?: "deleted" } }
+  | { type: "tags"; data: { added: string[]; removed: string[]; reason?: "deleted" } }
   | { type: "points"; data: { from: number | null; to: number | null } }
+  | { type: "comment"; data: { action: "added" | "edited" | "deleted"; author: string | null; excerpt: string } }
   | {
       type: "dependency";
       // role is from this card's point of view: it is blocked_by `card`, or it blocks `card`.
-      data: { action: "added" | "removed"; role: "blocked_by" | "blocks"; card: string; title: string };
+      data: {
+        action: "added" | "removed";
+        role: "blocked_by" | "blocks";
+        card: string;
+        title: string;
+        reason?: "deleted"; // the other card was deleted
+      };
     }
   | { type: "archived"; data: null }
   | { type: "restored"; data: null };

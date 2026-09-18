@@ -4,9 +4,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../auth.js";
 import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
-import { eventRows } from "../events.js";
+import { eventRows, type CardEventInput } from "../events.js";
 import { MAX_POINTS, parsePoints } from "../points.js";
 import { isValidBoardIcon } from "../boardIcons.js";
+import { commentCountInclude, withCommentCount } from "../comments.js";
 import { DEFAULT_PRIORITIES, MAX_PRIORITIES, isValidPriorityName } from "../priorities.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
@@ -99,7 +100,7 @@ boards.get("/:id", async (c) => {
     prisma.card.findMany({
       where: { boardId: id },
       orderBy: [{ columnId: "asc" }, { position: "asc" }],
-      include: { tags: true },
+      include: { tags: true, ...commentCountInclude },
     }),
     prisma.tag.findMany({
       where: { boardId: id },
@@ -122,7 +123,7 @@ boards.get("/:id", async (c) => {
 
   return c.json({
     board: publicBoard(board),
-    cards,
+    cards: cards.map(withCommentCount),
     tags,
     columns,
     priorities,
@@ -249,13 +250,15 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
 
   // Optional priority; must belong to this board.
   let priorityId: number | null = null;
+  let priorityName: string | null = null;
   if (body?.priorityId !== undefined && body.priorityId !== null) {
     const pid = Number(body.priorityId);
     const owned = Number.isInteger(pid)
-      ? await prisma.priority.findFirst({ where: { id: pid, boardId }, select: { id: true } })
+      ? await prisma.priority.findFirst({ where: { id: pid, boardId }, select: { id: true, name: true } })
       : null;
     if (!owned) return c.json({ error: "Invalid priority" }, 400);
     priorityId = owned.id;
+    priorityName = owned.name;
   }
 
   let points: number | null = null;
@@ -304,13 +307,16 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
     }
 
     const created = await tx.card.create({ data, include: { tags: true } });
-    await tx.cardEvent.createMany({
-      data: eventRows(created.id, boardId, [{ type: "created", data: { column: columnName } }]),
-    });
+    // Log what the card started with, so its history is complete from the first entry.
+    const initial: CardEventInput[] = [{ type: "created", data: { column: columnName } }];
+    if (priorityName) initial.push({ type: "priority", data: { from: null, to: priorityName } });
+    if (created.tags.length) initial.push({ type: "tags", data: { added: created.tags.map((t) => t.name), removed: [] } });
+    if (points !== null) initial.push({ type: "points", data: { from: null, to: points } });
+    await tx.cardEvent.createMany({ data: eventRows(created.id, boardId, initial) });
     return created;
   });
 
-  return c.json(card, 201);
+  return c.json({ ...card, commentCount: 0 }, 201);
 });
 
 // POST /api/boards/:id/columns - create a column (edit-key protected)

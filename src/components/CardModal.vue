@@ -18,6 +18,7 @@ import { renderMarkdown } from "../lib/markdown";
 import PriorityIcon from "./PriorityIcon.vue";
 import CardActivity from "./CardActivity.vue";
 import CardDependencies from "./CardDependencies.vue";
+import CardComments from "./CardComments.vue";
 
 const props = defineProps<{
   boardId: string;
@@ -42,6 +43,7 @@ const emit = defineEmits<{
   deleted: [id: number];
   dependenciesChanged: [dependencies: Dependency[]];
   navigate: [card: Card];
+  commentCount: [cardId: number, count: number];
 }>();
 
 const route = useRoute();
@@ -59,6 +61,8 @@ const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
 // Description opens straight into edit mode; read-only viewers only ever see the preview.
 const mode = ref<"edit" | "preview">(props.readOnly ? "preview" : "edit");
 const saving = ref(false);
+// Bumped when comments change so the activity list reloads with the new entry.
+const activityKey = ref(0);
 
 // Dependencies are edited as a draft of the board's links and written on Save.
 // A card that doesn't exist yet uses a placeholder id until it's created.
@@ -324,7 +328,8 @@ function onKeydown(e: KeyboardEvent) {
     else requestClose();
     return;
   }
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !props.readOnly) {
+  // The comment composer claims Ctrl/Cmd+Enter to post instead of saving the card.
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !props.readOnly && !e.defaultPrevented) {
     e.preventDefault();
     save();
   }
@@ -443,6 +448,15 @@ onBeforeUnmount(() => {
           </div>
 
           <p v-if="error" class="error">{{ error }}</p>
+
+          <CardComments
+            v-if="card"
+            :board-id="boardId"
+            :card-id="card.id"
+            :read-only="readOnly"
+            @count-changed="emit('commentCount', card.id, $event)"
+            @changed="activityKey++"
+          />
         </div>
 
         <aside class="m-rail">
@@ -565,7 +579,7 @@ onBeforeUnmount(() => {
           </section>
 
           <section v-if="card" class="rail-sec">
-            <CardActivity :card-id="card.id" />
+            <CardActivity :key="activityKey" :card-id="card.id" />
           </section>
         </aside>
       </div>

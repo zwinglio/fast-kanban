@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../db.js";
 import { verifyEditKey } from "../auth.js";
+import { eventRows } from "../events.js";
 
 export const tags = new Hono();
 
@@ -49,6 +50,16 @@ tags.delete("/:id", async (c) => {
   const check = await requireTagEditKey(id, c.req.header("X-Edit-Key"));
   if (!check.ok) return c.json({ error: check.error }, check.status);
 
-  await prisma.tag.delete({ where: { id } });
+  const affected = await prisma.card.findMany({ where: { tags: { some: { id } } }, select: { id: true } });
+  await prisma.$transaction([
+    prisma.tag.delete({ where: { id } }),
+    prisma.cardEvent.createMany({
+      data: affected.flatMap((card) =>
+        eventRows(card.id, check.tag.boardId, [
+          { type: "tags", data: { added: [], removed: [check.tag.name], reason: "deleted" } },
+        ])
+      ),
+    }),
+  ]);
   return c.json({ ok: true });
 });

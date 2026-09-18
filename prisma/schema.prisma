@@ -92,6 +92,20 @@ model CardDependency {
   @@map("card_dependencies")
 }
 
+model CardComment {
+  id        Int      @id @default(autoincrement())
+  cardId    Int      @map("card_id")
+  boardId   String   @map("board_id") @db.VarChar(12)
+  author    String?  @db.VarChar(40) // optional display name chosen in the browser; null = anonymous
+  body      String   @db.Text // markdown
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, id])
+  @@map("card_comments")
+}
+
 model Card {
   id         Int              @id @default(autoincrement())
   boardId    String           @map("board_id") @db.VarChar(12)
@@ -110,6 +124,7 @@ model Card {
   priority   Priority?        @relation(fields: [priorityId], references: [id], onDelete: SetNull)
   tags       Tag[]
   events     CardEvent[]
+  comments   CardComment[]
   blockedBy  CardDependency[] @relation("BlockedBy")
   blocks     CardDependency[] @relation("Blocks")
 

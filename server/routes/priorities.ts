@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { prisma } from "../db.js";
 import { verifyEditKey } from "../auth.js";
 import { isValidPaletteColor, isValidPriorityName } from "../priorities.js";
+import { eventRows } from "../events.js";
 
 export const priorities = new Hono();
 
@@ -72,6 +73,16 @@ priorities.delete("/:id", async (c) => {
   const check = await requirePriorityEditKey(id, c.req.header("X-Edit-Key"));
   if (!check.ok) return c.json({ error: check.error }, check.status);
 
-  await prisma.priority.delete({ where: { id } });
+  const affected = await prisma.card.findMany({ where: { priorityId: id }, select: { id: true } });
+  await prisma.$transaction([
+    prisma.priority.delete({ where: { id } }),
+    prisma.cardEvent.createMany({
+      data: affected.flatMap((card) =>
+        eventRows(card.id, check.priority.boardId, [
+          { type: "priority", data: { from: check.priority.name, to: null, reason: "deleted" } },
+        ])
+      ),
+    }),
+  ]);
   return c.json({ ok: true });
 });

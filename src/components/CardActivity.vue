@@ -96,10 +96,16 @@ function describe(e: CardEvent): Part[] {
     case "description":
       return [{ text: "Edited the description" }];
     case "priority":
+      if (!e.data.to && e.data.reason === "deleted") {
+        return [{ text: "Priority " }, { text: e.data.from ?? "", strong: true }, { text: " was deleted from the board" }];
+      }
       if (!e.data.to) return [{ text: "Removed priority " }, { text: e.data.from ?? "", strong: true }];
       if (!e.data.from) return [{ text: "Set priority to " }, { text: e.data.to, strong: true }];
       return [{ text: "Priority " }, { text: e.data.from, strong: true }, { text: " → " }, { text: e.data.to, strong: true }];
     case "tags": {
+      if (e.data.reason === "deleted") {
+        return [{ text: "Tag " }, { text: e.data.removed.join(", "), strong: true }, { text: " was deleted from the board" }];
+      }
       const parts: Part[] = [];
       if (e.data.added.length) {
         parts.push({ text: e.data.added.length === 1 ? "Added tag " : "Added tags " });
@@ -117,12 +123,22 @@ function describe(e: CardEvent): Part[] {
       return [{ text: "Estimate " }, { text: pts(e.data.from), strong: true }, { text: " → " }, { text: pts(e.data.to), strong: true }];
     case "dependency": {
       const other = { text: e.data.card, strong: true };
+      if (e.data.reason === "deleted") {
+        return [other, { text: e.data.role === "blocked_by" ? " (a blocker) was deleted" : " (blocked by this card) was deleted" }];
+      }
       if (e.data.role === "blocked_by") {
         return e.data.action === "added"
           ? [{ text: "Marked as blocked by " }, other]
           : [{ text: "No longer blocked by " }, other];
       }
       return e.data.action === "added" ? [{ text: "Now blocks " }, other] : [{ text: "No longer blocks " }, other];
+    }
+    case "comment": {
+      const who = e.data.author || "Anonymous";
+      if (e.data.action === "added") {
+        return [{ text: who, strong: true }, { text: " commented " }, { text: `“${e.data.excerpt}”` }];
+      }
+      return [{ text: e.data.action === "edited" ? "Edited a comment by " : "Deleted a comment by " }, { text: who, strong: true }];
     }
     case "archived":
       return [{ text: "Archived" }];
@@ -139,6 +155,7 @@ const ICONS: Record<CardEvent["type"], string> = {
   priority: "M5 21V4.5M5 4.5c2.5-1.6 5-1.6 7.5 0s5 1.6 7.5 0v9c-2.5 1.6-5 1.6-7.5 0s-5-1.6-7.5 0",
   points: "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z",
   dependency: "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5",
+  comment: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z",
   tags: "M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z",
   archived: "M3 4h18v5H3zM5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4",
   restored: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",

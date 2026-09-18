@@ -3,6 +3,15 @@ import { prisma } from "../db.js";
 import { verifyEditKey } from "../auth.js";
 import { eventRows, type CardEventInput } from "../events.js";
 import { MAX_POINTS, parsePoints } from "../points.js";
+import {
+  MAX_AUTHOR_LENGTH,
+  MAX_COMMENT_LENGTH,
+  commentCountInclude,
+  parseAuthor,
+  commentExcerpt,
+  parseCommentBody,
+  withCommentCount,
+} from "../comments.js";
 
 export const cards = new Hono();
 
@@ -150,6 +159,62 @@ cards.get("/:id/events", async (c) => {
   return c.json({ events: rows.slice(0, limit), hasMore: rows.length > limit, total });
 });
 
+// GET /api/cards/:id/comments?limit=5&before=<commentId> - the latest comments, oldest first,
+// with hasMore when there are earlier ones (public, like the board)
+cards.get("/:id/comments", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+
+  const limitParam = Number(c.req.query("limit") ?? 5);
+  const limit = Number.isInteger(limitParam) ? Math.min(Math.max(limitParam, 1), 50) : 5;
+  const beforeParam = c.req.query("before");
+  const before = beforeParam !== undefined ? Number(beforeParam) : undefined;
+  if (before !== undefined && !Number.isInteger(before)) {
+    return c.json({ error: "Invalid cursor" }, 400);
+  }
+
+  const card = await prisma.card.findUnique({ where: { id }, select: { id: true } });
+  if (!card) return c.json({ error: "Card not found" }, 404);
+
+  const [rows, total] = await Promise.all([
+    prisma.cardComment.findMany({
+      where: { cardId: id, ...(before !== undefined ? { id: { lt: before } } : {}) },
+      orderBy: { id: "desc" },
+      take: limit + 1,
+    }),
+    prisma.cardComment.count({ where: { cardId: id } }),
+  ]);
+
+  return c.json({ comments: rows.slice(0, limit).reverse(), hasMore: rows.length > limit, total });
+});
+
+// POST /api/cards/:id/comments { body, author? } - add a comment (edit-key protected)
+cards.post("/:id/comments", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+
+  const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
+  if (!check.ok) return c.json({ error: check.error }, check.status);
+
+  const payload = await c.req.json().catch(() => null);
+  const body = parseCommentBody(payload?.body);
+  if (body === null) return c.json({ error: `Comment must be 1-${MAX_COMMENT_LENGTH} characters` }, 400);
+  const author = parseAuthor(payload?.author);
+  if (!author.ok) return c.json({ error: `Name must be at most ${MAX_AUTHOR_LENGTH} characters` }, 400);
+
+  const [comment] = await prisma.$transaction([
+    prisma.cardComment.create({
+      data: { cardId: id, boardId: check.card.boardId, author: author.value, body },
+    }),
+    prisma.cardEvent.createMany({
+      data: eventRows(id, check.card.boardId, [
+        { type: "comment", data: { action: "added", author: author.value, excerpt: commentExcerpt(body) } },
+      ]),
+    }),
+  ]);
+  return c.json(comment, 201);
+});
+
 // PATCH /api/cards/:id - edit fields and/or move (columnId/position)
 cards.patch("/:id", async (c) => {
   const id = Number(c.req.param("id"));
@@ -255,10 +320,10 @@ cards.patch("/:id", async (c) => {
   const events = await describeChanges(id, data, { newColumnName, newPriorityName, newTags });
 
   const [updated] = await prisma.$transaction([
-    prisma.card.update({ where: { id }, data, include: { tags: true } }),
+    prisma.card.update({ where: { id }, data, include: { tags: true, ...commentCountInclude } }),
     prisma.cardEvent.createMany({ data: eventRows(id, check.card.boardId, events) }),
   ]);
-  return c.json(updated);
+  return c.json(withCommentCount(updated));
 });
 
 // DELETE /api/cards/:id
@@ -269,7 +334,26 @@ cards.delete("/:id", async (c) => {
   const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
   if (!check.ok) return c.json({ error: check.error }, check.status);
 
-  await prisma.card.delete({ where: { id } });
+  const links = await prisma.cardDependency.findMany({
+    where: { OR: [{ blockedId: id }, { blockerId: id }] },
+    select: { blockedId: true, blockerId: true },
+  });
+  const label = `${check.board.prefix}-${check.card.seq}`;
+  const boardId = check.card.boardId;
+  await prisma.$transaction([
+    prisma.card.delete({ where: { id } }),
+    prisma.cardEvent.createMany({
+      data: links.flatMap((l) =>
+        l.blockerId === id
+          ? eventRows(l.blockedId, boardId, [
+              { type: "dependency", data: { action: "removed", role: "blocked_by", card: label, title: check.card.title, reason: "deleted" } },
+            ])
+          : eventRows(l.blockerId, boardId, [
+              { type: "dependency", data: { action: "removed", role: "blocks", card: label, title: check.card.title, reason: "deleted" } },
+            ])
+      ),
+    }),
+  ]);
   return c.json({ ok: true });
 });
 

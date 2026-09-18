@@ -205,6 +205,11 @@ function syncModalFromRoute() {
 
 watch(() => route.query.card, syncModalFromRoute);
 
+function onCommentCount(cardId: number, count: number) {
+  const card = allCards.value.find((c) => c.id === cardId);
+  if (card) card.commentCount = count;
+}
+
 function removeCardLocally(id: number) {
   for (const col of boardColumns.value) {
     if (columns[col.id]) {
@@ -550,6 +555,7 @@ function onBoardSaved(updated: Board) {
         :done-column-id="doneColumnId"
         @dependencies-changed="boardDependencies = $event"
         @navigate="navigateToCard"
+        @comment-count="onCommentCount"
         @close="closeModal"
         @saved="onSaved"
         @deleted="onDeleted"
