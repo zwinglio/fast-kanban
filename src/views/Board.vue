@@ -7,12 +7,11 @@ import { rememberBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
 import BoardSettings from "../components/BoardSettings.vue";
-import BoardConfigMenu from "../components/BoardConfigMenu.vue";
 import TagsSettings from "../components/TagsSettings.vue";
 import GeneralSettings from "../components/GeneralSettings.vue";
-import BoardSwitcher from "../components/BoardSwitcher.vue";
-import ThemeToggle from "../components/ThemeToggle.vue";
 import FilterBar from "../components/FilterBar.vue";
+import BoardHeader from "../components/BoardHeader.vue";
+import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
 
 const route = useRoute();
@@ -41,6 +40,8 @@ const keyEntryLoading = ref(false);
 
 const activePanel = ref<"columns" | "tags" | "general" | null>(null);
 const density = ref<Density>(getDensity(boardId));
+
+const vFocus = { mounted: (el: HTMLElement) => el.focus() };
 
 function onDensityChange(next: Density) {
   density.value = next;
@@ -275,60 +276,62 @@ function onBoardSaved(updated: Board) {
     <div v-if="loading" class="status-msg">Loading board...</div>
     <div v-else-if="loadError" class="status-msg">{{ loadError }}</div>
     <template v-else-if="board">
-      <header class="board-header">
-        <div class="board-title">
-          <h1>{{ board.title }}</h1>
-          <span class="prefix-badge">{{ board.prefix }}</span>
-          <BoardSwitcher
-            :current-id="boardId"
-            :current-title="board.title"
-            :current-has-key="!readOnly"
-          />
-        </div>
-        <div class="header-actions">
-          <span v-if="readOnly" class="read-only-badge">Read-only</span>
-          <button v-if="readOnly" class="btn secondary" @click="showKeyEntry = true">
-            Enter edit key
-          </button>
-          <BoardConfigMenu
-            v-if="!readOnly"
-            @open-columns="activePanel = 'columns'"
-            @open-tags="activePanel = 'tags'"
-            @open-general="activePanel = 'general'"
-          />
-          <ThemeToggle />
-        </div>
-      </header>
+      <BoardHeader
+        :board-id="boardId"
+        :title="board.title"
+        :prefix="board.prefix"
+        :read-only="readOnly"
+        :card-count="totalCards"
+        :column-count="boardColumns.length"
+        :tag-count="boardTags.length"
+        @enter-key="showKeyEntry = true"
+        @open-columns="activePanel = 'columns'"
+        @open-tags="activePanel = 'tags'"
+        @open-general="activePanel = 'general'"
+      />
 
-      <div v-if="showNewKeyBanner" class="key-banner">
-        <div>
-          <strong>Save your edit key!</strong> You'll need it to make changes later. It won't be shown again.
-          <div class="key-value">{{ newKeyValue }}</div>
+      <div v-if="showNewKeyBanner" class="key-banner" role="status">
+        <span class="key-banner-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="15" r="4" />
+            <path d="M10.8 12.2L20 3M17 6l3 3M15 8l2 2" />
+          </svg>
+        </span>
+        <div class="key-banner-text">
+          <strong>Save your edit key</strong>
+          <span>You'll need it to make changes from another browser. It won't be shown again.</span>
+          <code class="key-value">{{ newKeyValue }}</code>
         </div>
         <div class="key-banner-actions">
-          <button class="btn secondary small" @click="copyKey">{{ copyLabel }}</button>
-          <button class="btn secondary small" @click="dismissBanner">Dismiss</button>
+          <button class="btn" type="button" @click="copyKey">{{ copyLabel }}</button>
+          <button class="btn secondary" type="button" @click="dismissBanner">Dismiss</button>
         </div>
       </div>
 
-      <div v-if="showKeyEntry" class="key-entry-overlay" @click.self="showKeyEntry = false">
-        <div class="key-entry-box">
-          <h3>Enter edit key</h3>
-          <input
-            v-model="keyInput"
-            type="text"
-            placeholder="Paste your edit key"
-            @keyup.enter="submitKeyEntry"
-          />
-          <p v-if="keyEntryError" class="error">{{ keyEntryError }}</p>
-          <div class="key-entry-actions">
-            <button class="btn secondary" @click="showKeyEntry = false">Cancel</button>
-            <button class="btn" :disabled="keyEntryLoading" @click="submitKeyEntry">
-              {{ keyEntryLoading ? "Checking..." : "Unlock editing" }}
-            </button>
-          </div>
-        </div>
-      </div>
+      <ModalShell
+        v-if="showKeyEntry"
+        title="Enter edit key"
+        subtitle="Paste the key you got when this board was created."
+        :width="420"
+        @close="showKeyEntry = false"
+      >
+        <input
+          v-model="keyInput"
+          v-focus
+          type="text"
+          class="sheet-input key-input"
+          placeholder="Paste your edit key"
+          aria-label="Edit key"
+          @keydown.enter.prevent="submitKeyEntry"
+        />
+        <p v-if="keyEntryError" class="sheet-error">{{ keyEntryError }}</p>
+        <template #footer>
+          <button class="btn secondary" type="button" @click="showKeyEntry = false">Cancel</button>
+          <button class="btn" type="button" :disabled="keyEntryLoading" @click="submitKeyEntry">
+            {{ keyEntryLoading ? "Checking..." : "Unlock editing" }}
+          </button>
+        </template>
+      </ModalShell>
 
       <FilterBar
         v-model:tag-ids="activeTagIds"
@@ -423,68 +426,54 @@ function onBoardSaved(updated: Board) {
   color: var(--muted);
 }
 
-.board-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.board-header h1 {
-  margin: 0 0 4px;
-  display: inline;
-}
-
-.board-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.prefix-badge {
-  background: var(--badge-bg);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  vertical-align: middle;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.read-only-badge {
-  background: var(--warning-bg);
-  color: var(--warning-text);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .key-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
   background: var(--success-bg);
   border: 1px solid var(--success-border);
-  border-radius: 6px;
-  padding: 14px 18px;
+  border-radius: 12px;
+}
+
+.key-banner-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--success-border) 22%, transparent);
+  color: var(--success-border);
+}
+.key-banner-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.key-banner-text {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 13.5px;
+}
+.key-banner-text span {
+  color: var(--muted);
 }
 
 .key-value {
   margin-top: 6px;
+  max-width: 100%;
+  overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 15px;
+  font-size: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 10px;
-  display: inline-block;
+  border-radius: 7px;
+  padding: 5px 10px;
   user-select: all;
 }
 
@@ -494,48 +483,18 @@ function onBoardSaved(updated: Board) {
   flex-shrink: 0;
 }
 
-.btn.small {
-  padding: 4px 10px;
-  font-size: 12px;
+.key-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.key-entry-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.key-entry-box {
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 24px;
-  width: 100%;
-  max-width: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.key-entry-box input {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-.key-entry-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.error {
-  color: var(--danger);
-  font-size: 13px;
-  margin: 0;
+@media (max-width: 640px) {
+  .key-banner {
+    flex-wrap: wrap;
+  }
+  .key-banner-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .columns {

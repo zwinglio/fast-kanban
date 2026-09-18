@@ -39,6 +39,10 @@ function goTo(id: string) {
   router.push({ name: "board", params: { id } });
 }
 
+function initial(title: string) {
+  return title.trim().charAt(0) || "?";
+}
+
 function remove(id: string) {
   forgetBoard(id);
   refresh();
@@ -68,146 +72,298 @@ onUnmounted(() => {
 
 <template>
   <div ref="root" class="switcher">
-    <button
-      class="icon-btn"
-      type="button"
-      title="Switch board"
-      aria-label="Switch board"
-      :aria-expanded="open"
-      @click="toggle"
-    >
-      ⇄
-    </button>
-    <div v-if="open" class="switcher-panel">
-      <div class="switcher-row current">
-        <div class="switcher-item">
-          <span class="switcher-title">{{ currentTitle }}</span>
-          <span v-if="!currentHasKey" class="switcher-badge">Read-only</span>
-          <span class="switcher-badge current-badge">Current</span>
-        </div>
-      </div>
-      <div v-if="entries.length === 1" class="switcher-empty">No other boards yet</div>
-      <div
-        v-for="b in entries.slice(1)"
-        :key="b.id"
-        class="switcher-row"
+    <h1 class="board-name">
+      <button
+        class="title-trigger"
+        type="button"
+        title="Switch board"
+        aria-haspopup="menu"
+        :aria-expanded="open"
+        @click="toggle"
       >
-        <button class="switcher-item" type="button" @click="goTo(b.id)">
-          <span class="switcher-title">{{ b.title }}</span>
-          <span v-if="!b.hasKey" class="switcher-badge">Read-only</span>
-        </button>
-        <button
-          class="remove-btn"
-          type="button"
-          title="Remove from list"
-          @click.stop="remove(b.id)"
-        >
-          ×
-        </button>
-      </div>
+        <span class="title-text" :title="currentTitle">{{ currentTitle }}</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+    </h1>
+
+    <div v-if="open" class="panel" role="menu">
+      <div class="panel-head">Recent boards</div>
+      <ul class="panel-list">
+        <li class="row current">
+          <div class="row-main" aria-current="page">
+            <span class="board-icon">{{ initial(currentTitle) }}</span>
+            <span class="row-title">{{ currentTitle }}</span>
+            <span v-if="!currentHasKey" class="ro-badge">Read-only</span>
+            <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </div>
+        </li>
+        <li v-for="b in entries.slice(1)" :key="b.id" class="row">
+          <button class="row-main" type="button" role="menuitem" @click="goTo(b.id)">
+            <span class="board-icon">{{ initial(b.title) }}</span>
+            <span class="row-title">{{ b.title || "Untitled board" }}</span>
+            <span v-if="!b.hasKey" class="ro-badge">Read-only</span>
+          </button>
+          <button
+            class="row-remove"
+            type="button"
+            title="Remove from list"
+            :aria-label="`Remove ${b.title} from recent boards`"
+            @click.stop="remove(b.id)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </li>
+      </ul>
+      <p v-if="entries.length === 1" class="panel-empty">No other boards yet.</p>
+      <router-link to="/" class="panel-foot" @click="open = false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        New board
+      </router-link>
     </div>
   </div>
 </template>
 
 <style scoped>
 .switcher {
+  --soft: color-mix(in srgb, var(--text) 7%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+
   position: relative;
-  display: inline-flex;
+  min-width: 0;
 }
 
-.switcher-panel {
+.board-name {
+  margin: 0;
+  min-width: 0;
+  font-size: inherit;
+}
+
+.title-trigger {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: calc(100% + 8px);
+  padding: 2px 8px;
+  margin-left: -8px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.title-trigger:hover,
+.title-trigger[aria-expanded="true"] {
+  background: var(--soft);
+}
+.title-trigger[aria-expanded="true"] {
+  border-color: var(--border);
+}
+
+/* wraps instead of truncating; only very long titles get clamped at two lines */
+.title-text {
+  min-width: 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.chev {
+  width: 18px;
+  height: 18px;
+  margin-top: 9px;
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.title-trigger[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
+}
+
+/* menu */
+.panel {
   position: absolute;
+  z-index: 50;
   top: calc(100% + 6px);
-  left: 0;
-  min-width: 240px;
-  max-width: 320px;
-  max-height: 320px;
-  overflow-y: auto;
+  left: -8px;
+  width: 300px;
+  max-width: calc(100vw - 32px);
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 20px var(--shadow-color);
-  padding: 6px;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  border-radius: 10px;
+  box-shadow: 0 18px 40px -16px var(--shadow-color), 0 2px 6px var(--shadow-color);
+  overflow: hidden;
 }
 
-.switcher-row {
+.panel-head {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 5px 5px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 6px;
 }
 
-.switcher-item {
+.row-main {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   min-width: 0;
-  padding: 8px 10px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  text-align: left;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
   color: var(--text);
-  font-size: 14px;
+  font-size: 13.5px;
+  text-align: left;
+}
+button.row-main:hover,
+button.row-main:focus-visible {
+  background: var(--soft);
+  outline: none;
+}
+.row.current .row-main {
+  background: var(--accent-soft);
+}
+.row:not(.current) .row-main {
+  padding-right: 34px;
 }
 
-.switcher-row:not(.current) .switcher-item:hover {
-  background: var(--badge-bg);
+.board-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.row.current .board-icon {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
-.switcher-row.current .switcher-item {
-  cursor: default;
-  background: var(--secondary-hover-bg);
-}
-
-.switcher-title {
+.row-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.switcher-badge {
-  flex-shrink: 0;
+.ro-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
   background: var(--warning-bg);
   color: var(--warning-text);
-  border-radius: 4px;
-  padding: 2px 6px;
   font-size: 11px;
   font-weight: 600;
 }
 
-.current-badge {
-  background: var(--badge-bg);
-  color: var(--muted);
+.check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--accent);
 }
 
-.remove-btn {
-  flex-shrink: 0;
+.row-remove {
+  position: absolute;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
   background: none;
-  border: none;
   color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  padding: 4px 8px;
-  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
-
-.remove-btn:hover {
+.row:hover .row-remove,
+.row-remove:focus-visible {
+  opacity: 1;
+}
+.row-remove:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
-  background: var(--badge-bg);
+}
+.row-remove svg {
+  width: 10px;
+  height: 10px;
 }
 
-.switcher-empty {
-  padding: 10px;
+.panel-empty {
+  margin: 0;
+  padding: 4px 14px 12px;
   font-size: 13px;
   color: var(--muted);
-  text-align: center;
+}
+
+.panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.panel-foot:hover {
+  background: var(--accent-soft);
+}
+.panel-foot svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 520px) {
+  .title-text {
+    font-size: 21px;
+  }
+  .chev {
+    margin-top: 6px;
+  }
 }
 </style>
