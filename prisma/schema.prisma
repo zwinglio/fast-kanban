@@ -9,17 +9,18 @@ generator client {
 }
 
 model Board {
-  id            String     @id @db.VarChar(12) // nanoid public slug (URL)
-  title         String     @db.VarChar(255)
-  prefix        String     @db.VarChar(16) // e.g. "PROJ"
-  editHash      String     @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
-  nextSeq       Int        @default(1) @map("next_seq") // per-board card counter
-  pointsEnabled Boolean    @default(false) @map("points_enabled") // story points are opt-in per board
-  createdAt     DateTime   @default(now()) @map("created_at")
-  cards         Card[]
-  tags          Tag[]
-  columns       Column[]
-  priorities    Priority[]
+  id                  String     @id @db.VarChar(12) // nanoid public slug (URL)
+  title               String     @db.VarChar(255)
+  prefix              String     @db.VarChar(16) // e.g. "PROJ"
+  editHash            String     @map("edit_hash") @db.VarChar(255) // scrypt: salt:hash
+  nextSeq             Int        @default(1) @map("next_seq") // per-board card counter
+  pointsEnabled       Boolean    @default(false) @map("points_enabled") // story points are opt-in per board
+  dependenciesEnabled Boolean    @default(false) @map("dependencies_enabled") // "blocked by" links are opt-in per board
+  createdAt           DateTime   @default(now()) @map("created_at")
+  cards               Card[]
+  tags                Tag[]
+  columns             Column[]
+  priorities          Priority[]
 
   @@map("boards")
 }
@@ -74,24 +75,42 @@ model CardEvent {
   @@map("card_events")
 }
 
+// "blocked is blocked by blocker" — the same link reads as "blocker blocks blocked".
+model CardDependency {
+  id        Int      @id @default(autoincrement())
+  boardId   String   @map("board_id") @db.VarChar(12)
+  blockedId Int      @map("blocked_id")
+  blockerId Int      @map("blocker_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  blocked   Card     @relation("BlockedBy", fields: [blockedId], references: [id], onDelete: Cascade)
+  blocker   Card     @relation("Blocks", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  @@unique([blockedId, blockerId])
+  @@index([boardId])
+  @@index([blockerId])
+  @@map("card_dependencies")
+}
+
 model Card {
-  id         Int         @id @default(autoincrement())
-  boardId    String      @map("board_id") @db.VarChar(12)
+  id         Int              @id @default(autoincrement())
+  boardId    String           @map("board_id") @db.VarChar(12)
   seq        Int // display id = prefix + "-" + seq
-  title      String      @db.VarChar(255)
-  body       String?     @db.MediumText // markdown
-  columnId   Int         @map("column_id")
-  priorityId Int?        @map("priority_id")
+  title      String           @db.VarChar(255)
+  body       String?          @db.MediumText // markdown
+  columnId   Int              @map("column_id")
+  priorityId Int?             @map("priority_id")
   points     Int? // story points; null = not estimated
-  position   Int         @default(0) // order within a column
-  archivedAt DateTime?   @map("archived_at") // null = active; archived cards are hidden by default
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
-  board      Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  column     Column      @relation(fields: [columnId], references: [id])
-  priority   Priority?   @relation(fields: [priorityId], references: [id], onDelete: SetNull)
+  position   Int              @default(0) // order within a column
+  archivedAt DateTime?        @map("archived_at") // null = active; archived cards are hidden by default
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  board      Board            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column     Column           @relation(fields: [columnId], references: [id])
+  priority   Priority?        @relation(fields: [priorityId], references: [id], onDelete: SetNull)
   tags       Tag[]
   events     CardEvent[]
+  blockedBy  CardDependency[] @relation("BlockedBy")
+  blocks     CardDependency[] @relation("Blocks")
 
   @@unique([boardId, seq])
   @@index([boardId, columnId])

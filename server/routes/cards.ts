@@ -14,7 +14,111 @@ async function requireCardEditKey(cardId: number, key: string | undefined) {
   if (!board) return { ok: false as const, status: 404 as const, error: "Board not found" };
   const valid = await verifyEditKey(key, board.editHash);
   if (!valid) return { ok: false as const, status: 401 as const, error: "Invalid edit key" };
-  return { ok: true as const, card };
+  return { ok: true as const, card, board };
+}
+
+const MAX_BLOCKERS = 20;
+
+// POST /api/cards/:id/dependencies { blockerId } - mark this card as blocked by another card
+cards.post("/:id/dependencies", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+
+  const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
+  if (!check.ok) return c.json({ error: check.error }, check.status);
+
+  const body = await c.req.json().catch(() => null);
+  const blockerId = Number(body?.blockerId);
+  if (!Number.isInteger(blockerId)) return c.json({ error: "Invalid blocker card" }, 400);
+  if (blockerId === id) return c.json({ error: "A card can't block itself" }, 400);
+
+  const boardId = check.card.boardId;
+  const blocker = await prisma.card.findFirst({ where: { id: blockerId, boardId } });
+  if (!blocker) return c.json({ error: "Blocker must be a card on this board" }, 400);
+
+  const links = await prisma.cardDependency.findMany({
+    where: { boardId },
+    select: { blockedId: true, blockerId: true },
+  });
+  if (links.some((l) => l.blockedId === id && l.blockerId === blockerId)) {
+    return c.json({ error: "That dependency already exists" }, 400);
+  }
+  if (links.filter((l) => l.blockedId === id).length >= MAX_BLOCKERS) {
+    return c.json({ error: `A card can be blocked by at most ${MAX_BLOCKERS} cards` }, 400);
+  }
+  if (wouldCreateCycle(links, id, blockerId)) {
+    return c.json({ error: "That would create a loop — the other card already depends on this one" }, 400);
+  }
+
+  const prefix = check.board.prefix;
+  await prisma.$transaction([
+    prisma.cardDependency.create({ data: { boardId, blockedId: id, blockerId } }),
+    prisma.cardEvent.createMany({
+      data: [
+        ...eventRows(id, boardId, [
+          { type: "dependency", data: { action: "added", role: "blocked_by", card: `${prefix}-${blocker.seq}`, title: blocker.title } },
+        ]),
+        ...eventRows(blockerId, boardId, [
+          { type: "dependency", data: { action: "added", role: "blocks", card: `${prefix}-${check.card.seq}`, title: check.card.title } },
+        ]),
+      ],
+    }),
+  ]);
+  return c.json({ blockedId: id, blockerId }, 201);
+});
+
+// DELETE /api/cards/:id/dependencies/:blockerId - remove a "blocked by" link
+cards.delete("/:id/dependencies/:blockerId", async (c) => {
+  const id = Number(c.req.param("id"));
+  const blockerId = Number(c.req.param("blockerId"));
+  if (!Number.isInteger(id) || !Number.isInteger(blockerId)) return c.json({ error: "Invalid card id" }, 400);
+
+  const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
+  if (!check.ok) return c.json({ error: check.error }, check.status);
+
+  const link = await prisma.cardDependency.findUnique({
+    where: { blockedId_blockerId: { blockedId: id, blockerId } },
+    include: { blocker: { select: { seq: true, title: true } } },
+  });
+  if (!link) return c.json({ error: "Dependency not found" }, 404);
+
+  const boardId = check.card.boardId;
+  const prefix = check.board.prefix;
+  await prisma.$transaction([
+    prisma.cardDependency.delete({ where: { id: link.id } }),
+    prisma.cardEvent.createMany({
+      data: [
+        ...eventRows(id, boardId, [
+          { type: "dependency", data: { action: "removed", role: "blocked_by", card: `${prefix}-${link.blocker.seq}`, title: link.blocker.title } },
+        ]),
+        ...eventRows(blockerId, boardId, [
+          { type: "dependency", data: { action: "removed", role: "blocks", card: `${prefix}-${check.card.seq}`, title: check.card.title } },
+        ]),
+      ],
+    }),
+  ]);
+  return c.json({ ok: true });
+});
+
+// Adding "blocked is blocked by blocker" loops if `blocked` is already, directly or
+// transitively, one of `blocker`'s blockers.
+function wouldCreateCycle(links: { blockedId: number; blockerId: number }[], blocked: number, blocker: number): boolean {
+  const blockersOf = new Map<number, number[]>();
+  for (const l of links) {
+    const list = blockersOf.get(l.blockedId) ?? [];
+    list.push(l.blockerId);
+    blockersOf.set(l.blockedId, list);
+  }
+  const seen = new Set<number>();
+  const stack = [blocker];
+  while (stack.length) {
+    const current = stack.pop()!;
+    if (current === blocked) return true;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    stack.push(...(blockersOf.get(current) ?? []));
+  }
+  return false;
 }
 
 // GET /api/cards/:id/events?limit=4&before=<eventId> - newest-first activity (public, like the board)

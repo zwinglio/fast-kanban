@@ -24,13 +24,21 @@ function parseSeq(value: unknown): number | null {
   return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= MAX_SEQ ? n : null;
 }
 
-function publicBoard(board: { id: string; title: string; prefix: string; nextSeq: number; pointsEnabled: boolean }) {
+function publicBoard(board: {
+  id: string;
+  title: string;
+  prefix: string;
+  nextSeq: number;
+  pointsEnabled: boolean;
+  dependenciesEnabled: boolean;
+}) {
   return {
     id: board.id,
     title: board.title,
     prefix: board.prefix,
     nextSeq: board.nextSeq,
     pointsEnabled: board.pointsEnabled,
+    dependenciesEnabled: board.dependenciesEnabled,
   };
 }
 
@@ -84,7 +92,7 @@ boards.get("/:id", async (c) => {
   const board = await prisma.board.findUnique({ where: { id } });
   if (!board) return c.json({ error: "Board not found" }, 404);
 
-  const [cards, tags, columns, priorities] = await Promise.all([
+  const [cards, tags, columns, priorities, dependencies] = await Promise.all([
     prisma.card.findMany({
       where: { boardId: id },
       orderBy: [{ columnId: "asc" }, { position: "asc" }],
@@ -102,6 +110,11 @@ boards.get("/:id", async (c) => {
       where: { boardId: id },
       orderBy: [{ position: "asc" }, { id: "asc" }],
     }),
+    prisma.cardDependency.findMany({
+      where: { boardId: id },
+      select: { blockedId: true, blockerId: true },
+      orderBy: { id: "asc" },
+    }),
   ]);
 
   return c.json({
@@ -110,6 +123,7 @@ boards.get("/:id", async (c) => {
     tags,
     columns,
     priorities,
+    dependencies,
   });
 });
 
@@ -120,7 +134,7 @@ boards.patch("/:id", requireEditKey, async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "Invalid body" }, 400);
 
-  const data: { title?: string; nextSeq?: number; pointsEnabled?: boolean } = {};
+  const data: { title?: string; nextSeq?: number; pointsEnabled?: boolean; dependenciesEnabled?: boolean } = {};
 
   if (body.title !== undefined) {
     const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -152,7 +166,15 @@ boards.patch("/:id", requireEditKey, async (c) => {
     data.pointsEnabled = body.pointsEnabled;
   }
 
-  if (data.title === undefined && data.nextSeq === undefined && data.pointsEnabled === undefined) {
+  if (body.dependenciesEnabled !== undefined) {
+    if (typeof body.dependenciesEnabled !== "boolean") {
+      return c.json({ error: "Invalid dependencies setting" }, 400);
+    }
+    // Turning dependencies off only hides them; links are kept.
+    data.dependenciesEnabled = body.dependenciesEnabled;
+  }
+
+  if (Object.keys(data).length === 0) {
     return c.json({ error: "Nothing to update" }, 400);
   }
 

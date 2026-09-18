@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
-import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag, type Priority } from "../api";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag, type Priority, type Dependency } from "../api";
 import { getEditKey, setEditKey } from "../lib/editKey";
 import { rememberBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
@@ -15,8 +15,10 @@ import BoardHeader from "../components/BoardHeader.vue";
 import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
 import type { ArchiveView } from "../lib/archive";
+import { parseCardNumber } from "../lib/cardSearch";
 
 const route = useRoute();
+const router = useRouter();
 const boardId = route.params.id as string;
 
 const board = ref<Board | null>(null);
@@ -29,6 +31,7 @@ const archivedCards = ref<Card[]>([]);
 
 const boardTags = ref<Tag[]>([]);
 const boardPriorities = ref<Priority[]>([]);
+const boardDependencies = ref<Dependency[]>([]);
 const activeTagIds = ref<Set<number>>(new Set());
 const activePriorityIds = ref<Set<number>>(new Set()); // NO_PRIORITY = cards without one
 const activeColumnIds = ref<Set<number>>(new Set());
@@ -115,6 +118,7 @@ async function load(opts: { quiet?: boolean } = {}) {
     boardColumns.value = data.columns ?? [];
     boardTags.value = data.tags ?? [];
     boardPriorities.value = data.priorities ?? [];
+    boardDependencies.value = data.dependencies ?? [];
     activeColumnIds.value = opts.quiet
       ? new Set(
           boardColumns.value
@@ -156,10 +160,26 @@ onMounted(async () => {
   if (board.value) {
     rememberBoard({ id: boardId, title: board.value.title, hasKey: !readOnly.value });
   }
+  syncModalFromRoute();
 });
+
+// The open card lives in the URL (?card=<number>) so cards can be linked, shared,
+// opened in a new tab, and stepped through with the browser's back button.
+function queryWithCard(seq: number | null) {
+  const query = { ...route.query };
+  if (seq === null) delete query.card;
+  else query.card = String(seq);
+  return query;
+}
 
 function openCard(card: Card) {
   modalState.value = { mode: "edit", card };
+  if (route.query.card !== String(card.seq)) router.replace({ query: queryWithCard(card.seq) });
+}
+
+// Following a link from inside a card (e.g. a dependency) adds a history entry.
+function navigateToCard(card: Card) {
+  router.push({ query: queryWithCard(card.seq) });
 }
 
 function openAddCard(columnId: number) {
@@ -168,7 +188,22 @@ function openAddCard(columnId: number) {
 
 function closeModal() {
   modalState.value = null;
+  if (route.query.card !== undefined) router.replace({ query: queryWithCard(null) });
 }
+
+function syncModalFromRoute() {
+  const raw = route.query.card;
+  const seq = typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isInteger(seq)) {
+    if (modalState.value?.mode === "edit") modalState.value = null;
+    return;
+  }
+  if (modalState.value?.card?.seq === seq) return;
+  const card = allCards.value.find((c) => c.seq === seq);
+  if (card) modalState.value = { mode: "edit", card };
+}
+
+watch(() => route.query.card, syncModalFromRoute);
 
 function removeCardLocally(id: number) {
   for (const col of boardColumns.value) {
@@ -193,6 +228,7 @@ function onSaved(card: Card) {
 
 function onDeleted(id: number) {
   removeCardLocally(id);
+  boardDependencies.value = boardDependencies.value.filter((d) => d.blockedId !== id && d.blockerId !== id);
   closeModal();
 }
 
@@ -236,13 +272,21 @@ function cardSearchText(card: Card): string {
     .toLowerCase();
 }
 
+// A number-like term ("12", "#12", "FAK-12") means that card; it also still matches titles
+// that contain it, so "2024" finds "Plan 2024" too.
+function cardMatchesTerm(card: Card, term: string, text: string): boolean {
+  const n = parseCardNumber(term, board.value?.prefix ?? "");
+  if (n !== null) return card.seq === n || card.title.toLowerCase().includes(term.replace(/^#/, ""));
+  return text.includes(term);
+}
+
 function cardMatchesFilters(card: Card): boolean {
   if (!activeColumnIds.value.has(card.columnId)) return false;
   if (activeTagIds.value.size > 0 && !(card.tags ?? []).some((t) => activeTagIds.value.has(t.id))) return false;
   if (activePriorityIds.value.size > 0 && !activePriorityIds.value.has(card.priorityId ?? NO_PRIORITY)) return false;
   if (searchTerms.value.length) {
     const text = cardSearchText(card);
-    if (!searchTerms.value.every((term) => text.includes(term))) return false;
+    if (!searchTerms.value.every((term) => cardMatchesTerm(card, term, text))) return false;
   }
   return true;
 }
@@ -263,6 +307,24 @@ const filteredColumns = computed<Record<number, Card[]>>(() => {
 const highestSeq = computed(() =>
   [...activeCards(), ...archivedCards.value].reduce((max, c) => Math.max(max, c.seq), 0)
 );
+
+// Every card on the board, archived included (dependency pickers and lookups need them all).
+const allCards = computed(() => [...activeCards(), ...archivedCards.value]);
+
+// A blocker counts as resolved once it sits in the board's last column or is archived.
+const doneColumnId = computed(() => boardColumns.value[boardColumns.value.length - 1]?.id ?? null);
+
+const openBlockersByCard = computed<Record<number, string[]>>(() => {
+  const out: Record<number, string[]> = {};
+  if (!board.value?.dependenciesEnabled) return out;
+  const byId = new Map(allCards.value.map((c) => [c.id, c]));
+  for (const d of boardDependencies.value) {
+    const blocker = byId.get(d.blockerId);
+    if (!blocker || blocker.archivedAt || blocker.columnId === doneColumnId.value) continue;
+    (out[d.blockedId] ??= []).push(`${board.value.prefix}-${blocker.seq}`);
+  }
+  return out;
+});
 
 // Cards in the current archive view, before the other filters ("12 of <this>").
 const viewPoolCount = computed(() => {
@@ -460,6 +522,7 @@ function onBoardSaved(updated: Board) {
           :density="density"
           :priorities="boardPriorities"
           :points-enabled="board.pointsEnabled"
+          :open-blockers="openBlockersByCard"
           @change="persistColumnOrder(col.id)"
           @open="openCard"
           @add-card="openAddCard(col.id)"
@@ -468,6 +531,7 @@ function onBoardSaved(updated: Board) {
 
       <CardModal
         v-if="modalState"
+        :key="modalState.card?.id ?? 'new'"
         :board-id="boardId"
         :prefix="board.prefix"
         :board-title="board.title"
@@ -478,6 +542,12 @@ function onBoardSaved(updated: Board) {
         :board-columns="boardColumns"
         :board-priorities="boardPriorities"
         :points-enabled="board.pointsEnabled"
+        :dependencies-enabled="board.dependenciesEnabled"
+        :dependencies="boardDependencies"
+        :all-cards="allCards"
+        :done-column-id="doneColumnId"
+        @dependencies-changed="boardDependencies = $event"
+        @navigate="navigateToCard"
         @close="closeModal"
         @saved="onSaved"
         @deleted="onDeleted"
@@ -519,6 +589,7 @@ function onBoardSaved(updated: Board) {
         :density="density"
         :next-seq="board.nextSeq"
         :points-enabled="board.pointsEnabled"
+        :dependencies-enabled="board.dependenciesEnabled"
         :highest-seq="highestSeq"
         @close="activePanel = null"
         @saved="onBoardSaved"

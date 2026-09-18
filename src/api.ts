@@ -44,6 +44,13 @@ export interface Board {
   prefix: string;
   nextSeq: number; // number the next created card will get
   pointsEnabled: boolean; // story points are opt-in per board
+  dependenciesEnabled: boolean; // "blocked by" links are opt-in per board
+}
+
+/** blockedId is blocked by blockerId (equivalently: blockerId blocks blockedId). */
+export interface Dependency {
+  blockedId: number;
+  blockerId: number;
 }
 
 class ApiError extends Error {
@@ -80,12 +87,12 @@ export function createBoard(title: string, prefix: string, startAt?: number) {
 }
 
 export function getBoard(id: string) {
-  return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[]; priorities: Priority[] }>(`/boards/${id}`);
+  return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[]; priorities: Priority[]; dependencies: Dependency[] }>(`/boards/${id}`);
 }
 
 export function updateBoard(
   boardId: string,
-  patch: Partial<{ title: string; nextSeq: number; pointsEnabled: boolean }>
+  patch: Partial<{ title: string; nextSeq: number; pointsEnabled: boolean; dependenciesEnabled: boolean }>
 ) {
   return request<Board>(`/boards/${boardId}`, {
     method: "PATCH",
@@ -184,6 +191,12 @@ export type CardEvent =
   | { id: number; createdAt: string; type: "priority"; data: { from: string | null; to: string | null } }
   | { id: number; createdAt: string; type: "tags"; data: { added: string[]; removed: string[] } }
   | { id: number; createdAt: string; type: "points"; data: { from: number | null; to: number | null } }
+  | {
+      id: number;
+      createdAt: string;
+      type: "dependency";
+      data: { action: "added" | "removed"; role: "blocked_by" | "blocks"; card: string; title: string };
+    }
   | { id: number; createdAt: string; type: "archived" | "restored"; data: null };
 
 export function getCardEvents(cardId: number, opts: { limit?: number; before?: number } = {}) {
@@ -194,6 +207,17 @@ export function getCardEvents(cardId: number, opts: { limit?: number; before?: n
   return request<{ events: CardEvent[]; hasMore: boolean; total: number }>(
     `/cards/${cardId}/events${qs ? `?${qs}` : ""}`
   );
+}
+
+export function addDependency(boardId: string, blockedId: number, blockerId: number) {
+  return request<Dependency>(`/cards/${blockedId}/dependencies`, {
+    method: "POST",
+    body: JSON.stringify({ blockerId }),
+  }, boardId);
+}
+
+export function removeDependency(boardId: string, blockedId: number, blockerId: number) {
+  return request<{ ok: true }>(`/cards/${blockedId}/dependencies/${blockerId}`, { method: "DELETE" }, boardId);
 }
 
 export function createPriority(boardId: string, name: string, color: string) {

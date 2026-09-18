@@ -1,9 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { createCard, updateCard, deleteCard, ApiError, type Card, type Column, type Priority, type Tag } from "../api";
+import { useRoute, useRouter } from "vue-router";
+import {
+  addDependency,
+  removeDependency,
+  createCard,
+  updateCard,
+  deleteCard,
+  ApiError,
+  type Card,
+  type Column,
+  type Dependency,
+  type Priority,
+  type Tag,
+} from "../api";
 import { renderMarkdown } from "../lib/markdown";
 import PriorityIcon from "./PriorityIcon.vue";
 import CardActivity from "./CardActivity.vue";
+import CardDependencies from "./CardDependencies.vue";
 
 const props = defineProps<{
   boardId: string;
@@ -16,13 +30,22 @@ const props = defineProps<{
   boardColumns: Column[];
   boardPriorities: Priority[];
   pointsEnabled: boolean;
+  dependenciesEnabled: boolean;
+  dependencies: Dependency[];
+  allCards: Card[];
+  doneColumnId: number | null;
 }>();
 
 const emit = defineEmits<{
   close: [];
   saved: [card: Card];
   deleted: [id: number];
+  dependenciesChanged: [dependencies: Dependency[]];
+  navigate: [card: Card];
 }>();
+
+const route = useRoute();
+const router = useRouter();
 
 const isNew = props.card === null;
 const title = ref(props.card?.title ?? "");
@@ -36,6 +59,19 @@ const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
 // Description opens straight into edit mode; read-only viewers only ever see the preview.
 const mode = ref<"edit" | "preview">(props.readOnly ? "preview" : "edit");
 const saving = ref(false);
+
+// Dependencies are edited as a draft of the board's links and written on Save.
+// A card that doesn't exist yet uses a placeholder id until it's created.
+const NEW_CARD_ID = -1;
+const selfId = props.card?.id ?? NEW_CARD_ID;
+const depDraft = ref<Dependency[]>([...props.dependencies]);
+
+function ownLinks(list: Dependency[]) {
+  return list
+    .filter((d) => d.blockedId === selfId || d.blockerId === selfId)
+    .map((d) => `${d.blockedId}>${d.blockerId}`)
+    .sort();
+}
 const archiving = ref(false);
 const isArchived = computed(() => !!props.card?.archivedAt);
 const deleting = ref(false);
@@ -48,9 +84,9 @@ const titleEl = ref<HTMLTextAreaElement | null>(null);
 const bodyEl = ref<HTMLTextAreaElement | null>(null);
 const tagPickerEl = ref<HTMLElement | null>(null);
 
-const snapshot = JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort()]);
+const snapshot = JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort(), ownLinks(depDraft.value)]);
 const dirty = computed(
-  () => JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort()]) !== snapshot
+  () => JSON.stringify([title.value, body.value, columnId.value, priorityId.value, points.value, [...selectedTagIds.value].sort(), ownLinks(depDraft.value)]) !== snapshot
 );
 
 const displayId = computed(() => (props.card ? `${props.prefix}-${props.card.seq}` : "New card"));
@@ -127,6 +163,7 @@ async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {})
         ...(props.pointsEnabled ? { points: points.value } : {}),
         tagIds: selectedTagIds.value,
       });
+      if (!(await persistDependencies(created.id))) return;
       emit("saved", created);
     } else {
       const updated = await updateCard(props.boardId, props.card!.id, {
@@ -138,6 +175,7 @@ async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {})
         tagIds: selectedTagIds.value,
         ...(opts.archived !== undefined ? { archived: opts.archived } : {}),
       });
+      if (!(await persistDependencies(updated.id))) return;
       emit("saved", updated);
     }
   } catch (e) {
@@ -147,12 +185,94 @@ async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {})
   }
 }
 
+// Applies the draft's changes to this card's links. Returns false (and keeps the modal
+// open) if any request failed; the card itself is already saved at that point.
+async function persistDependencies(cardId: number): Promise<boolean> {
+  if (!props.dependenciesEnabled) return true;
+  const resolve = (id: number) => (id === NEW_CARD_ID ? cardId : id);
+  const key = (d: Dependency) => `${d.blockedId}>${d.blockerId}`;
+  const before = props.dependencies.filter((d) => d.blockedId === selfId || d.blockerId === selfId);
+  const after = depDraft.value
+    .filter((d) => d.blockedId === selfId || d.blockerId === selfId)
+    .map((d) => ({ blockedId: resolve(d.blockedId), blockerId: resolve(d.blockerId) }));
+  const beforeKeys = new Set(before.map(key));
+  const afterKeys = new Set(after.map(key));
+  const removed = before.filter((d) => !afterKeys.has(key(d)));
+  const added = after.filter((d) => !beforeKeys.has(key(d)));
+  if (!removed.length && !added.length) return true;
+
+  let result = props.dependencies.slice();
+  let failure = "";
+  for (const d of removed) {
+    try {
+      await removeDependency(props.boardId, d.blockedId, d.blockerId);
+      result = result.filter((x) => key(x) !== key(d));
+    } catch (e) {
+      failure = e instanceof ApiError ? e.message : "Couldn't remove a dependency";
+    }
+  }
+  for (const d of added) {
+    try {
+      await addDependency(props.boardId, d.blockedId, d.blockerId);
+      result = [...result, d];
+    } catch (e) {
+      failure = e instanceof ApiError ? e.message : "Couldn't add a dependency";
+    }
+  }
+  emit("dependenciesChanged", result);
+  if (failure && !isNew) {
+    depDraft.value = result;
+    error.value = `Card saved, but a dependency wasn't: ${failure}`;
+    return false;
+  }
+  return true;
+}
+
+// Set when a link inside the card was followed while there were unsaved edits.
+const pendingNavigation = ref<Card | null>(null);
+
 function requestClose() {
   if (!props.readOnly && dirty.value) {
+    pendingNavigation.value = null;
     confirmingDiscard.value = true;
     return;
   }
   emit("close");
+}
+
+function openLinkedCard(target: Card) {
+  if (!props.readOnly && dirty.value) {
+    pendingNavigation.value = target;
+    confirmingDiscard.value = true;
+    return;
+  }
+  emit("navigate", target);
+}
+
+function discardChanges() {
+  if (pendingNavigation.value) emit("navigate", pendingNavigation.value);
+  else emit("close");
+}
+
+function keepEditing() {
+  confirmingDiscard.value = false;
+  pendingNavigation.value = null;
+}
+
+const copyState = ref<"idle" | "copied" | "failed">("idle");
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function copyLink() {
+  if (!props.card) return;
+  const href = router.resolve({ query: { ...route.query, card: String(props.card.seq) } }).href;
+  try {
+    await navigator.clipboard.writeText(new URL(href, window.location.origin).toString());
+    copyState.value = "copied";
+  } catch {
+    copyState.value = "failed";
+  }
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => (copyState.value = "idle"), 1600);
 }
 
 const backdropArmed = ref(false);
@@ -194,11 +314,13 @@ async function remove() {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  // Inner widgets (e.g. the dependency search) claim Escape with preventDefault.
+  if (e.key === "Escape" && e.defaultPrevented) return;
   if (e.key === "Escape") {
     e.preventDefault();
     if (tagPickerOpen.value) tagPickerOpen.value = false;
     else if (confirmingDelete.value) confirmingDelete.value = false;
-    else if (confirmingDiscard.value) confirmingDiscard.value = false;
+    else if (confirmingDiscard.value) keepEditing();
     else requestClose();
     return;
   }
@@ -246,11 +368,30 @@ onBeforeUnmount(() => {
             <template v-if="boardTitle">{{ boardTitle }} <b>/</b> </template>{{ currentColumn?.name ?? "" }}
           </span>
         </div>
-        <button class="close-btn" type="button" title="Close (Esc)" aria-label="Close" @click="requestClose">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <div class="m-head-right">
+          <button
+            v-if="card"
+            class="close-btn"
+            :class="{ copied: copyState === 'copied' }"
+            type="button"
+            :title="copyState === 'copied' ? 'Link copied' : copyState === 'failed' ? 'Couldn’t copy — use the address bar' : 'Copy link to this card'"
+            :aria-label="copyState === 'copied' ? 'Link copied' : 'Copy link to this card'"
+            @click="copyLink"
+          >
+            <svg v-if="copyState === 'copied'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+              <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
+            </svg>
+          </button>
+          <button class="close-btn" type="button" title="Close (Esc)" aria-label="Close" @click="requestClose">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="m-body">
@@ -410,6 +551,19 @@ onBeforeUnmount(() => {
             <div v-else class="rail-empty">No tags yet — add them in board settings.</div>
           </section>
 
+          <section v-if="dependenciesEnabled" class="rail-sec">
+            <CardDependencies
+              v-model:dependencies="depDraft"
+              :card-id="selfId"
+              :prefix="prefix"
+              :read-only="readOnly"
+              :all-cards="allCards"
+              :columns="boardColumns"
+              :done-column-id="doneColumnId"
+              @open="openLinkedCard"
+            />
+          </section>
+
           <section v-if="card" class="rail-sec">
             <CardActivity :card-id="card.id" />
           </section>
@@ -448,9 +602,11 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="confirmingDiscard" class="confirm">
-          <span>Discard unsaved changes?</span>
-          <button type="button" class="go" @click="emit('close')">Discard</button>
-          <button type="button" class="no" @click="confirmingDiscard = false">Keep editing</button>
+          <span>
+            {{ pendingNavigation ? `Discard unsaved changes and open ${prefix}-${pendingNavigation.seq}?` : "Discard unsaved changes?" }}
+          </span>
+          <button type="button" class="go" @click="discardChanges">Discard</button>
+          <button type="button" class="no" @click="keepEditing">Keep editing</button>
         </div>
         <div v-else class="foot-right">
           <span v-if="dirty" class="dirty"><span class="dot" />Unsaved changes</span>
@@ -558,6 +714,13 @@ onBeforeUnmount(() => {
   border-color: var(--border);
 }
 .close-btn svg { width: 17px; height: 17px; }
+.close-btn.copied { color: var(--success-border); }
+.m-head-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
 
 /* body: large main column + narrower attribute rail */
 .m-body {

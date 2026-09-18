@@ -13,6 +13,7 @@ const props = defineProps<{
   nextSeq: number;
   highestSeq: number; // highest card number in use, archived cards included
   pointsEnabled: boolean;
+  dependenciesEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +33,7 @@ const nextValid = computed(
   () => Number.isInteger(nextSeq.value) && (nextSeq.value as number) >= minNext && (nextSeq.value as number) <= MAX_SEQ
 );
 const pointsEnabled = ref(props.pointsEnabled);
+const dependenciesEnabled = ref(props.dependenciesEnabled);
 const saving = ref(false);
 const error = ref("");
 const titleEl = ref<HTMLInputElement | null>(null);
@@ -50,8 +52,9 @@ async function save() {
   }
   if (density.value !== props.density) emit("update:density", density.value);
 
-  const patch: { title?: string; nextSeq?: number; pointsEnabled?: boolean } = {};
+  const patch: { title?: string; nextSeq?: number; pointsEnabled?: boolean; dependenciesEnabled?: boolean } = {};
   if (pointsEnabled.value !== props.pointsEnabled) patch.pointsEnabled = pointsEnabled.value;
+  if (dependenciesEnabled.value !== props.dependenciesEnabled) patch.dependenciesEnabled = dependenciesEnabled.value;
   if (trimmed !== props.title) patch.title = trimmed;
   if (nextSeq.value !== currentNext) patch.nextSeq = nextSeq.value as number;
   if (!Object.keys(patch).length) {
@@ -122,7 +125,7 @@ async function save() {
 
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <span class="sheet-label">Estimation</span>
+        <span class="sheet-label">Planning</span>
       </div>
       <ToggleSwitch
         v-model="pointsEnabled"
@@ -131,6 +134,15 @@ async function save() {
       />
       <p v-if="!pointsEnabled && props.pointsEnabled" class="sheet-note">
         Points are hidden when turned off — estimates on cards are kept.
+      </p>
+      <ToggleSwitch
+        v-model="dependenciesEnabled"
+        class="toggle-gap"
+        label="Dependencies"
+        hint="Link cards as “blocked by” and “blocks”, and flag cards that are waiting on others."
+      />
+      <p v-if="!dependenciesEnabled && props.dependenciesEnabled" class="sheet-note">
+        Dependencies are hidden when turned off — links between cards are kept.
       </p>
     </section>
 
@@ -182,6 +194,10 @@ async function save() {
 </template>
 
 <style scoped>
+.toggle-gap {
+  margin-top: 8px;
+}
+
 .seq-row {
   display: flex;
   align-items: center;

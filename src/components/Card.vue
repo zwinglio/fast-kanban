@@ -10,6 +10,7 @@ const props = defineProps<{
   density: Density;
   priorities: Priority[];
   pointsEnabled: boolean;
+  openBlockers: string[]; // IDs of blockers that aren't done yet
 }>();
 
 defineEmits<{ open: [] }>();
@@ -54,6 +55,16 @@ const updatedLabel = computed(() => {
     <div class="card-top">
       <span class="card-id">{{ displayId }}</span>
       <span class="card-signals">
+        <span
+          v-if="openBlockers.length"
+          class="blocked-chip"
+          :title="`Blocked by ${openBlockers.join(', ')}`"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" />
+          </svg>
+          <span v-if="density !== 'compact'">Blocked<template v-if="openBlockers.length > 1"> · {{ openBlockers.length }}</template></span>
+        </span>
         <span v-if="card.archivedAt" class="archived-chip" title="Archived">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="5" rx="1.5" />
@@ -185,6 +196,28 @@ const updatedLabel = computed(() => {
   white-space: nowrap;
 }
 .card-priority.icon-only {
+  padding: 0;
+  background: none;
+}
+
+.blocked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.blocked-chip svg {
+  width: 12px;
+  height: 12px;
+}
+.d-compact .blocked-chip {
   padding: 0;
   background: none;
 }

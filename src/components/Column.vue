@@ -16,6 +16,7 @@ const props = defineProps<{
   density: Density;
   priorities: Priority[];
   pointsEnabled: boolean;
+  openBlockers: Record<number, string[]>; // card id -> IDs of unresolved blockers
 }>();
 
 const totalPoints = computed(() => props.cards.reduce((sum, c) => sum + (c.points ?? 0), 0));
@@ -61,7 +62,7 @@ const emit = defineEmits<{
       @change="emit('change')"
     >
       <template #item="{ element }">
-        <CardTile :card="element" :prefix="prefix" :density="density" :priorities="priorities" :points-enabled="pointsEnabled" @open="emit('open', element)" />
+        <CardTile :card="element" :prefix="prefix" :density="density" :priorities="priorities" :points-enabled="pointsEnabled" :open-blockers="openBlockers[element.id] ?? []" @open="emit('open', element)" />
       </template>
     </draggable>
 

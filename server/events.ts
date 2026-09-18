@@ -10,6 +10,11 @@ export type CardEventInput =
   | { type: "priority"; data: { from: string | null; to: string | null } }
   | { type: "tags"; data: { added: string[]; removed: string[] } }
   | { type: "points"; data: { from: number | null; to: number | null } }
+  | {
+      type: "dependency";
+      // role is from this card's point of view: it is blocked_by `card`, or it blocks `card`.
+      data: { action: "added" | "removed"; role: "blocked_by" | "blocks"; card: string; title: string };
+    }
   | { type: "archived"; data: null }
   | { type: "restored"; data: null };
 
