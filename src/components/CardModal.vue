@@ -200,105 +200,109 @@ async function remove() {
       </div>
 
       <div class="modal-body">
-        <label>
-          Title
-          <input v-model="title" type="text" maxlength="255" :disabled="readOnly" />
-        </label>
+        <div class="col-main">
+          <label>
+            Title
+            <input v-model="title" type="text" maxlength="255" :disabled="readOnly" />
+          </label>
 
-        <label>
-          Column
-          <select v-model="columnId" :disabled="readOnly">
-            <option v-for="col in boardColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
-          </select>
-        </label>
-
-        <div class="tags-field">
-          <div class="tags-label">
-            Tags
-            <span class="tags-count">{{ boardTags.length }}/{{ MAX_TAGS }}</span>
-          </div>
-          <div v-if="boardTags.length" class="tags-chips">
-            <div v-for="tag in boardTags" :key="tag.id" class="tag-chip-wrap">
-              <template v-if="editingTagId === tag.id">
-                <input
-                  v-model="editTagName"
-                  type="text"
-                  maxlength="50"
-                  class="tag-edit-input"
-                  @keyup.enter="confirmRenameTag(tag)"
-                  @keyup.esc="cancelRenameTag"
-                />
-                <button class="icon-btn" type="button" :disabled="renamingTag" @click="confirmRenameTag(tag)">✓</button>
-                <button class="icon-btn" type="button" @click="cancelRenameTag">✕</button>
-              </template>
-              <template v-else>
-                <button
-                  type="button"
-                  class="tag-chip selectable"
-                  :class="{ active: selectedTagIds.includes(tag.id) }"
-                  :disabled="readOnly"
-                  @click="toggleTag(tag.id)"
-                >
-                  {{ tag.name }}
-                </button>
-                <template v-if="!readOnly">
-                  <button class="icon-btn" type="button" title="Rename tag" @click="startRenameTag(tag)">✎</button>
-                  <button
-                    class="icon-btn"
-                    type="button"
-                    title="Delete tag"
-                    :disabled="deletingTagId === tag.id"
-                    @click="removeTag(tag)"
-                  >
-                    ×
-                  </button>
-                </template>
-              </template>
+          <div class="body-field">
+            <div class="body-header">
+              <span>Description (Markdown)</span>
+              <button
+                v-if="!readOnly"
+                class="btn secondary small"
+                type="button"
+                @click="editingBody = !editingBody"
+              >
+                {{ editingBody ? "Preview" : "Edit" }}
+              </button>
             </div>
-          </div>
-          <div v-else class="tags-empty">No tags yet for this board.</div>
-          <div v-if="!readOnly" class="new-tag-row">
-            <input
-              v-model="newTagName"
-              type="text"
-              maxlength="50"
-              placeholder="New tag name"
-              :disabled="tagLimitReached"
-              @keyup.enter="addTag"
+            <textarea
+              v-if="editingBody && !readOnly"
+              v-model="body"
+              rows="10"
+              placeholder="Write markdown here..."
             />
-            <button
-              class="btn secondary small"
-              type="button"
-              :disabled="creatingTag || tagLimitReached"
-              @click="addTag"
-            >
-              {{ creatingTag ? "Adding..." : "Add" }}
-            </button>
+            <div v-else class="markdown-preview" v-html="preview || '<p><em>No description</em></p>'" />
           </div>
-          <p v-if="tagLimitReached && !readOnly" class="tags-limit-note">
-            Tag limit reached ({{ MAX_TAGS }}). Remove a tag from the board to add a new one.
-          </p>
         </div>
 
-        <div class="body-field">
-          <div class="body-header">
-            <span>Description (Markdown)</span>
-            <button
-              v-if="!readOnly"
-              class="btn secondary small"
-              type="button"
-              @click="editingBody = !editingBody"
-            >
-              {{ editingBody ? "Preview" : "Edit" }}
-            </button>
+        <div class="col-side">
+          <label>
+            Column
+            <select v-model="columnId" :disabled="readOnly">
+              <option v-for="col in boardColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
+            </select>
+          </label>
+
+          <div class="tags-field">
+            <div class="tags-label">
+              Tags
+              <span class="tags-count">{{ boardTags.length }}/{{ MAX_TAGS }}</span>
+            </div>
+            <div v-if="boardTags.length" class="tags-chips">
+              <div v-for="tag in boardTags" :key="tag.id" class="tag-chip-wrap">
+                <template v-if="editingTagId === tag.id">
+                  <input
+                    v-model="editTagName"
+                    type="text"
+                    maxlength="50"
+                    class="tag-edit-input"
+                    @keyup.enter="confirmRenameTag(tag)"
+                    @keyup.esc="cancelRenameTag"
+                  />
+                  <button class="icon-btn" type="button" :disabled="renamingTag" @click="confirmRenameTag(tag)">✓</button>
+                  <button class="icon-btn" type="button" @click="cancelRenameTag">✕</button>
+                </template>
+                <template v-else>
+                  <button
+                    type="button"
+                    class="tag-chip selectable"
+                    :class="{ active: selectedTagIds.includes(tag.id) }"
+                    :disabled="readOnly"
+                    @click="toggleTag(tag.id)"
+                  >
+                    {{ tag.name }}
+                  </button>
+                  <template v-if="!readOnly">
+                    <button class="icon-btn" type="button" title="Rename tag" @click="startRenameTag(tag)">✎</button>
+                    <button
+                      class="icon-btn"
+                      type="button"
+                      title="Delete tag"
+                      :disabled="deletingTagId === tag.id"
+                      @click="removeTag(tag)"
+                    >
+                      ×
+                    </button>
+                  </template>
+                </template>
+              </div>
+            </div>
+            <div v-else class="tags-empty">No tags yet for this board.</div>
+            <div v-if="!readOnly" class="new-tag-row">
+              <input
+                v-model="newTagName"
+                type="text"
+                maxlength="50"
+                placeholder="New tag name"
+                :disabled="tagLimitReached"
+                @keyup.enter="addTag"
+              />
+              <button
+                class="btn secondary small"
+                type="button"
+                :disabled="creatingTag || tagLimitReached"
+                @click="addTag"
+              >
+                {{ creatingTag ? "Adding..." : "Add" }}
+              </button>
+            </div>
+            <p v-if="tagLimitReached && !readOnly" class="tags-limit-note">
+              Tag limit reached ({{ MAX_TAGS }}). Remove a tag from the board to add a new one.
+            </p>
           </div>
-          <textarea
-            v-if="editingBody && !readOnly"
-            v-model="body"
-            rows="10"
-            placeholder="Write markdown here..."
-          />
-          <div v-else class="markdown-preview" v-html="preview || '<p><em>No description</em></p>'" />
         </div>
 
         <p v-if="error" class="error">{{ error }}</p>
@@ -334,7 +338,7 @@ async function remove() {
   background: var(--panel);
   border-radius: 8px;
   width: 100%;
-  max-width: 560px;
+  max-width: 920px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -364,9 +368,24 @@ async function remove() {
 .modal-body {
   padding: 20px;
   overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.col-main,
+.col-side {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .modal-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 label {
@@ -391,12 +410,14 @@ textarea {
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
+  min-height: 220px;
 }
 
 .body-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1;
 }
 
 .tags-field {
@@ -493,7 +514,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 10px 12px;
-  min-height: 100px;
+  min-height: 220px;
   font-size: 14px;
 }
 
@@ -505,6 +526,7 @@ textarea {
   color: var(--danger);
   font-size: 13px;
   margin: 0;
+  grid-column: 1 / -1;
 }
 
 .modal-footer {
