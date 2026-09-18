@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { createCard, updateCard, deleteCard, createTag, deleteTag, renameTag, ApiError, type Card, type Column, type Tag } from "../api";
+import { createCard, updateCard, deleteCard, ApiError, type Card, type Column, type Tag } from "../api";
 import { renderMarkdown } from "../lib/markdown";
 
 const props = defineProps<{
@@ -17,9 +17,6 @@ const emit = defineEmits<{
   close: [];
   saved: [card: Card];
   deleted: [id: number];
-  tagCreated: [tag: Tag];
-  tagRenamed: [tag: Tag];
-  tagDeleted: [id: number];
 }>();
 
 const isNew = props.card === null;
@@ -27,12 +24,6 @@ const title = ref(props.card?.title ?? "");
 const body = ref(props.card?.body ?? "");
 const columnId = ref<number>(props.card?.columnId ?? props.initialColumnId ?? props.boardColumns[0]?.id ?? 0);
 const selectedTagIds = ref<number[]>(props.card?.tags?.map((t) => t.id) ?? []);
-const newTagName = ref("");
-const creatingTag = ref(false);
-const editingTagId = ref<number | null>(null);
-const editTagName = ref("");
-const renamingTag = ref(false);
-const deletingTagId = ref<number | null>(null);
 const editingBody = ref(isNew);
 const saving = ref(false);
 const deleting = ref(false);
@@ -43,88 +34,12 @@ const displayId = computed(() =>
 );
 
 const preview = computed(() => renderMarkdown(body.value));
-const MAX_TAGS = 5;
-const tagLimitReached = computed(() => props.boardTags.length >= MAX_TAGS);
 
 function toggleTag(id: number) {
   if (props.readOnly) return;
   const i = selectedTagIds.value.indexOf(id);
   if (i >= 0) selectedTagIds.value.splice(i, 1);
   else selectedTagIds.value.push(id);
-}
-
-function startRenameTag(tag: Tag) {
-  editingTagId.value = tag.id;
-  editTagName.value = tag.name;
-}
-
-function cancelRenameTag() {
-  editingTagId.value = null;
-  editTagName.value = "";
-}
-
-async function confirmRenameTag(tag: Tag) {
-  const name = editTagName.value.trim();
-  if (!name || name.length > 50) {
-    error.value = "Tag name must be 1-50 chars";
-    return;
-  }
-  if (name === tag.name) {
-    cancelRenameTag();
-    return;
-  }
-  renamingTag.value = true;
-  error.value = "";
-  try {
-    const updated = await renameTag(props.boardId, tag.id, name);
-    emit("tagRenamed", updated);
-    cancelRenameTag();
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to rename tag";
-  } finally {
-    renamingTag.value = false;
-  }
-}
-
-async function removeTag(tag: Tag) {
-  if (!confirm(`Delete tag "${tag.name}"? This removes it from all cards.`)) return;
-  deletingTagId.value = tag.id;
-  error.value = "";
-  try {
-    await deleteTag(props.boardId, tag.id);
-    selectedTagIds.value = selectedTagIds.value.filter((id) => id !== tag.id);
-    emit("tagDeleted", tag.id);
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to delete tag";
-  } finally {
-    deletingTagId.value = null;
-  }
-}
-
-async function addTag() {
-  error.value = "";
-  const name = newTagName.value.trim();
-  if (!name || name.length > 50) {
-    error.value = "Tag name must be 1-50 chars";
-    return;
-  }
-  const existing = props.boardTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
-  if (existing) {
-    if (!selectedTagIds.value.includes(existing.id)) selectedTagIds.value.push(existing.id);
-    newTagName.value = "";
-    return;
-  }
-  creatingTag.value = true;
-  try {
-    const tag = await createTag(props.boardId, name);
-    emit("tagCreated", tag);
-    selectedTagIds.value.push(tag.id);
-    newTagName.value = "";
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to create tag";
-  } finally {
-    creatingTag.value = false;
-  }
 }
 
 const PLACEHOLDER_TITLE = "Untitled";
@@ -237,71 +152,21 @@ async function remove() {
           </label>
 
           <div class="tags-field">
-            <div class="tags-label">
-              Tags
-              <span class="tags-count">{{ boardTags.length }}/{{ MAX_TAGS }}</span>
-            </div>
+            <div class="tags-label">Tags</div>
             <div v-if="boardTags.length" class="tags-chips">
-              <div v-for="tag in boardTags" :key="tag.id" class="tag-chip-wrap">
-                <template v-if="editingTagId === tag.id">
-                  <input
-                    v-model="editTagName"
-                    type="text"
-                    maxlength="50"
-                    class="tag-edit-input"
-                    @keyup.enter="confirmRenameTag(tag)"
-                    @keyup.esc="cancelRenameTag"
-                  />
-                  <button class="icon-btn" type="button" :disabled="renamingTag" @click="confirmRenameTag(tag)">✓</button>
-                  <button class="icon-btn" type="button" @click="cancelRenameTag">✕</button>
-                </template>
-                <template v-else>
-                  <button
-                    type="button"
-                    class="tag-chip selectable"
-                    :class="{ active: selectedTagIds.includes(tag.id) }"
-                    :disabled="readOnly"
-                    @click="toggleTag(tag.id)"
-                  >
-                    {{ tag.name }}
-                  </button>
-                  <template v-if="!readOnly">
-                    <button class="icon-btn" type="button" title="Rename tag" @click="startRenameTag(tag)">✎</button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Delete tag"
-                      :disabled="deletingTagId === tag.id"
-                      @click="removeTag(tag)"
-                    >
-                      ×
-                    </button>
-                  </template>
-                </template>
-              </div>
-            </div>
-            <div v-else class="tags-empty">No tags yet for this board.</div>
-            <div v-if="!readOnly" class="new-tag-row">
-              <input
-                v-model="newTagName"
-                type="text"
-                maxlength="50"
-                placeholder="New tag name"
-                :disabled="tagLimitReached"
-                @keyup.enter="addTag"
-              />
               <button
-                class="btn secondary small"
+                v-for="tag in boardTags"
+                :key="tag.id"
                 type="button"
-                :disabled="creatingTag || tagLimitReached"
-                @click="addTag"
+                class="tag-chip selectable"
+                :class="{ active: selectedTagIds.includes(tag.id) }"
+                :disabled="readOnly"
+                @click="toggleTag(tag.id)"
               >
-                {{ creatingTag ? "Adding..." : "Add" }}
+                {{ tag.name }}
               </button>
             </div>
-            <p v-if="tagLimitReached && !readOnly" class="tags-limit-note">
-              Tag limit reached ({{ MAX_TAGS }}). Remove a tag from the board to add a new one.
-            </p>
+            <div v-else class="tags-empty">No tags yet — add them in board settings.</div>
           </div>
         </div>
 
@@ -434,67 +299,15 @@ textarea {
   gap: 8px;
 }
 
-.tags-count {
-  font-weight: 500;
-  font-size: 11px;
-  color: var(--muted);
-  background: var(--badge-bg);
-  border-radius: 10px;
-  padding: 1px 7px;
-}
-
-.tags-limit-note {
-  margin: 0;
-  font-size: 12px;
-  color: var(--warning-text);
-}
-
 .tags-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.tag-chip-wrap {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  padding: 2px 4px;
-}
-
-.icon-btn:hover {
-  color: var(--danger);
-}
-
-.tag-edit-input {
-  padding: 2px 6px;
-  font-size: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  width: 100px;
-}
-
 .tags-empty {
   font-size: 13px;
   color: var(--muted);
-}
-
-.new-tag-row {
-  display: flex;
-  gap: 8px;
-}
-
-.new-tag-row input {
-  flex: 1;
 }
 
 .body-header {

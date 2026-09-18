@@ -75,6 +75,25 @@ boards.get("/:id", async (c) => {
   });
 });
 
+// PATCH /api/boards/:id - update board fields (currently title) (edit-key protected)
+boards.patch("/:id", requireEditKey, async (c) => {
+  const boardId = c.req.param("id");
+  if (!boardId) return c.json({ error: "Missing board id" }, 400);
+  const body = await c.req.json().catch(() => null);
+
+  const title = typeof body?.title === "string" ? body.title.trim() : "";
+  if (!title || title.length > 255) {
+    return c.json({ error: "Title is required (max 255 chars)" }, 400);
+  }
+
+  const board = await prisma.board.update({
+    where: { id: boardId },
+    data: { title },
+  });
+
+  return c.json({ id: board.id, title: board.title, prefix: board.prefix });
+});
+
 // GET /api/boards/:id/verify - check whether a supplied X-Edit-Key is valid
 boards.get("/:id/verify", async (c) => {
   const id = c.req.param("id");

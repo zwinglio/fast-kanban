@@ -70,6 +70,13 @@ export function getBoard(id: string) {
   return request<{ board: Board; cards: Card[]; tags: Tag[]; columns: Column[] }>(`/boards/${id}`);
 }
 
+export function updateBoard(boardId: string, patch: { title: string }) {
+  return request<Board>(`/boards/${boardId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }, boardId);
+}
+
 export function verifyEditKey(id: string, key: string) {
   return request<{ valid: boolean }>(`/boards/${id}/verify`, {
     headers: { "X-Edit-Key": key },

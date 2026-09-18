@@ -7,6 +7,9 @@ import { rememberBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
 import BoardSettings from "../components/BoardSettings.vue";
+import BoardConfigMenu from "../components/BoardConfigMenu.vue";
+import TagsSettings from "../components/TagsSettings.vue";
+import GeneralSettings from "../components/GeneralSettings.vue";
 import BoardSwitcher from "../components/BoardSwitcher.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
 
@@ -34,7 +37,7 @@ const keyInput = ref("");
 const keyEntryError = ref("");
 const keyEntryLoading = ref(false);
 
-const showSettings = ref(false);
+const activePanel = ref<"columns" | "tags" | "general" | null>(null);
 
 const modalState = ref<{ mode: "edit" | "create"; card: Card | null; columnId?: number } | null>(
   null
@@ -264,6 +267,14 @@ async function submitKeyEntry() {
 async function onSettingsChanged() {
   await load();
 }
+
+function onBoardSaved(updated: Board) {
+  if (board.value) {
+    board.value = updated;
+    document.title = `${updated.title} - Fast Kanban`;
+  }
+  activePanel.value = null;
+}
 </script>
 
 <template>
@@ -286,9 +297,12 @@ async function onSettingsChanged() {
           <button v-if="readOnly" class="btn secondary" @click="showKeyEntry = true">
             Enter edit key
           </button>
-          <button v-if="!readOnly" class="icon-btn" type="button" title="Board settings" @click="showSettings = true">
-            ⚙️
-          </button>
+          <BoardConfigMenu
+            v-if="!readOnly"
+            @open-columns="activePanel = 'columns'"
+            @open-tags="activePanel = 'tags'"
+            @open-general="activePanel = 'general'"
+          />
           <ThemeToggle />
         </div>
       </header>
@@ -402,18 +416,34 @@ async function onSettingsChanged() {
         @close="closeModal"
         @saved="onSaved"
         @deleted="onDeleted"
+      />
+
+      <BoardSettings
+        v-if="activePanel === 'columns'"
+        :board-id="boardId"
+        :columns="boardColumns"
+        :card-counts="cardCountsByColumn()"
+        @close="activePanel = null"
+        @changed="onSettingsChanged"
+      />
+
+      <TagsSettings
+        v-if="activePanel === 'tags'"
+        :board-id="boardId"
+        :tags="boardTags"
+        @close="activePanel = null"
         @tag-created="onTagCreated"
         @tag-renamed="onTagRenamed"
         @tag-deleted="onTagDeleted"
       />
 
-      <BoardSettings
-        v-if="showSettings"
+      <GeneralSettings
+        v-if="activePanel === 'general'"
         :board-id="boardId"
-        :columns="boardColumns"
-        :card-counts="cardCountsByColumn()"
-        @close="showSettings = false"
-        @changed="onSettingsChanged"
+        :title="board.title"
+        :prefix="board.prefix"
+        @close="activePanel = null"
+        @saved="onBoardSaved"
       />
     </template>
   </div>
