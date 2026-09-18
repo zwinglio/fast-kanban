@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { createCard, updateCard, deleteCard, ApiError, type Card, type Column, type Priority, type Tag } from "../api";
 import { renderMarkdown } from "../lib/markdown";
 import PriorityIcon from "./PriorityIcon.vue";
+import CardActivity from "./CardActivity.vue";
 
 const props = defineProps<{
   boardId: string;
@@ -343,6 +344,10 @@ onBeforeUnmount(() => {
               <span v-if="readOnly && !selectedTags.length" class="rail-empty">No tags</span>
             </div>
             <div v-else class="rail-empty">No tags yet — add them in board settings.</div>
+          </section>
+
+          <section v-if="card" class="rail-sec">
+            <CardActivity :card-id="card.id" />
           </section>
         </aside>
       </div>

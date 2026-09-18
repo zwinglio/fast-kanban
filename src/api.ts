@@ -163,6 +163,25 @@ export function deleteColumn(boardId: string, columnId: number) {
   return request<{ ok: true }>(`/columns/${columnId}`, { method: "DELETE" }, boardId);
 }
 
+export type CardEvent =
+  | { id: number; createdAt: string; type: "created"; data: { column: string } }
+  | { id: number; createdAt: string; type: "moved"; data: { from: string; to: string } }
+  | { id: number; createdAt: string; type: "title"; data: { from: string; to: string } }
+  | { id: number; createdAt: string; type: "description"; data: null }
+  | { id: number; createdAt: string; type: "priority"; data: { from: string | null; to: string | null } }
+  | { id: number; createdAt: string; type: "tags"; data: { added: string[]; removed: string[] } }
+  | { id: number; createdAt: string; type: "archived" | "restored"; data: null };
+
+export function getCardEvents(cardId: number, opts: { limit?: number; before?: number } = {}) {
+  const params = new URLSearchParams();
+  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.before !== undefined) params.set("before", String(opts.before));
+  const qs = params.toString();
+  return request<{ events: CardEvent[]; hasMore: boolean; total: number }>(
+    `/cards/${cardId}/events${qs ? `?${qs}` : ""}`
+  );
+}
+
 export function createPriority(boardId: string, name: string, color: string) {
   return request<Priority>(`/boards/${boardId}/priorities`, {
     method: "POST",

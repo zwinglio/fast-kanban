@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../auth.js";
 import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
+import { eventRows } from "../events.js";
 import { DEFAULT_PRIORITIES, MAX_PRIORITIES, isValidPriorityName } from "../priorities.js";
 
 const nanoidId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10);
@@ -169,6 +170,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
 
   // Resolve columnId: must belong to this board; default to lowest-position column
   let columnId: number | undefined = undefined;
+  let columnName = "";
   if (typeof body?.columnId === "number" && Number.isInteger(body.columnId)) {
     columnId = body.columnId;
   }
@@ -181,6 +183,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
       return c.json({ error: "Board has no columns" }, 400);
     }
     columnId = firstCol.id;
+    columnName = firstCol.name;
   } else {
     const col = await prisma.column.findFirst({
       where: { id: columnId, boardId },
@@ -188,6 +191,7 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
     if (!col) {
       return c.json({ error: "Invalid column" }, 400);
     }
+    columnName = col.name;
   }
 
   // Optional priority; must belong to this board.
@@ -238,7 +242,11 @@ boards.post("/:id/cards", requireEditKey, async (c) => {
       }
     }
 
-    return tx.card.create({ data, include: { tags: true } });
+    const created = await tx.card.create({ data, include: { tags: true } });
+    await tx.cardEvent.createMany({
+      data: eventRows(created.id, boardId, [{ type: "created", data: { column: columnName } }]),
+    });
+    return created;
   });
 
   return c.json(card, 201);

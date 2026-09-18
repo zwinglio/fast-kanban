@@ -60,22 +60,36 @@ model Priority {
   @@map("priorities")
 }
 
+model CardEvent {
+  id        Int      @id @default(autoincrement())
+  cardId    Int      @map("card_id")
+  boardId   String   @map("board_id") @db.VarChar(12)
+  type      String   @db.VarChar(32) // created | moved | title | description | priority | tags | archived | restored
+  data      Json? // names captured at the time, so renames/deletes don't rewrite history
+  createdAt DateTime @default(now()) @map("created_at")
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, id])
+  @@map("card_events")
+}
+
 model Card {
-  id         Int       @id @default(autoincrement())
-  boardId    String    @map("board_id") @db.VarChar(12)
+  id         Int         @id @default(autoincrement())
+  boardId    String      @map("board_id") @db.VarChar(12)
   seq        Int // display id = prefix + "-" + seq
-  title      String    @db.VarChar(255)
-  body       String?   @db.MediumText // markdown
-  columnId   Int       @map("column_id")
-  priorityId Int?      @map("priority_id")
-  position   Int       @default(0) // order within a column
-  archivedAt DateTime? @map("archived_at") // null = active; archived cards are hidden by default
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  board      Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  column     Column    @relation(fields: [columnId], references: [id])
-  priority   Priority? @relation(fields: [priorityId], references: [id], onDelete: SetNull)
+  title      String      @db.VarChar(255)
+  body       String?     @db.MediumText // markdown
+  columnId   Int         @map("column_id")
+  priorityId Int?        @map("priority_id")
+  position   Int         @default(0) // order within a column
+  archivedAt DateTime?   @map("archived_at") // null = active; archived cards are hidden by default
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  board      Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column     Column      @relation(fields: [columnId], references: [id])
+  priority   Priority?   @relation(fields: [priorityId], references: [id], onDelete: SetNull)
   tags       Tag[]
+  events     CardEvent[]
 
   @@unique([boardId, seq])
   @@index([boardId, columnId])
