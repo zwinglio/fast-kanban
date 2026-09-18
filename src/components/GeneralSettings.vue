@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { updateBoard, ApiError, type Board } from "../api";
+import ModalShell from "./ModalShell.vue";
 
 const props = defineProps<{
   boardId: string;
@@ -16,6 +17,9 @@ const emit = defineEmits<{
 const title = ref(props.title);
 const saving = ref(false);
 const error = ref("");
+const titleEl = ref<HTMLInputElement | null>(null);
+
+onMounted(() => titleEl.value?.select());
 
 async function save() {
   const trimmed = title.value.trim();
@@ -41,156 +45,38 @@ async function save() {
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">General</span>
-        <button class="close-btn" @click="emit('close')">&times;</button>
+  <ModalShell title="General" subtitle="Board name and card identifier." :width="460" @close="emit('close')">
+    <section class="sheet-section">
+      <div class="sheet-section-head">
+        <label class="sheet-label" for="board-title">Title</label>
       </div>
+      <input
+        id="board-title"
+        ref="titleEl"
+        v-model="title"
+        type="text"
+        maxlength="255"
+        class="sheet-input"
+        placeholder="Board title"
+        @keydown.enter.prevent="save"
+      />
+    </section>
 
-      <div class="modal-body">
-        <div class="settings-section">
-          <h3 class="section-header">Title</h3>
-          <input
-            v-model="title"
-            type="text"
-            maxlength="255"
-            class="title-input"
-            placeholder="Board title"
-            @keyup.enter="save"
-          />
-        </div>
-
-        <div class="settings-section">
-          <h3 class="section-header">Prefix</h3>
-          <div class="prefix-row">
-            <span class="prefix-badge">{{ prefix }}</span>
-            <span class="prefix-note">Used in card IDs; cannot be changed.</span>
-          </div>
-        </div>
-
-        <p v-if="error" class="error">{{ error }}</p>
+    <section class="sheet-section">
+      <div class="sheet-section-head">
+        <span class="sheet-label">Prefix</span>
       </div>
+      <span class="sheet-key">{{ prefix }}</span>
+      <p class="sheet-note">Used in card IDs like <b>{{ prefix }}-12</b>. It can't be changed.</p>
+    </section>
 
-      <div class="modal-footer">
-        <div class="spacer" />
-        <button class="btn secondary" @click="emit('close')">Cancel</button>
-        <button class="btn" :disabled="saving" @click="save">
-          {{ saving ? "Saving..." : "Save" }}
-        </button>
-      </div>
-    </div>
-  </div>
+    <p v-if="error" class="sheet-error">{{ error }}</p>
+
+    <template #footer>
+      <button class="btn secondary" type="button" @click="emit('close')">Cancel</button>
+      <button class="btn" type="button" :disabled="saving" @click="save">
+        {{ saving ? "Saving..." : "Save" }}
+      </button>
+    </template>
+  </ModalShell>
 </template>
-
-<style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay-bg);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 48px 16px;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--panel);
-  border-radius: 8px;
-  width: 100%;
-  max-width: 440px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-title {
-  font-weight: 700;
-  font-size: 16px;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 22px;
-  line-height: 1;
-  color: var(--muted);
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.section-header {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.title-input {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.prefix-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.prefix-badge {
-  background: var(--badge-bg);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.prefix-note {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.error {
-  color: var(--danger);
-  font-size: 13px;
-  margin: 0;
-}
-
-.modal-footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-}
-
-.spacer {
-  flex: 1;
-}
-</style>
