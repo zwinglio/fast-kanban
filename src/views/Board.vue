@@ -13,6 +13,7 @@ import GeneralSettings from "../components/GeneralSettings.vue";
 import BoardSwitcher from "../components/BoardSwitcher.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
 import FilterBar from "../components/FilterBar.vue";
+import { getDensity, setDensity, type Density } from "../lib/density";
 
 const route = useRoute();
 const boardId = route.params.id as string;
@@ -39,6 +40,12 @@ const keyEntryError = ref("");
 const keyEntryLoading = ref(false);
 
 const activePanel = ref<"columns" | "tags" | "general" | null>(null);
+const density = ref<Density>(getDensity(boardId));
+
+function onDensityChange(next: Density) {
+  density.value = next;
+  setDensity(boardId, next);
+}
 
 const modalState = ref<{ mode: "edit" | "create"; card: Card | null; columnId?: number } | null>(
   null
@@ -346,6 +353,7 @@ function onBoardSaved(updated: Board) {
           :prefix="board.prefix"
           :read-only="readOnly"
           :disable-drag="filterActive"
+          :density="density"
           @change="persistColumnOrder(col.id)"
           @open="openCard"
           @add-card="openAddCard(col.id)"
@@ -391,8 +399,10 @@ function onBoardSaved(updated: Board) {
         :board-id="boardId"
         :title="board.title"
         :prefix="board.prefix"
+        :density="density"
         @close="activePanel = null"
         @saved="onBoardSaved"
+        @update:density="onDensityChange"
       />
     </template>
   </div>
@@ -530,7 +540,8 @@ function onBoardSaved(updated: Board) {
 
 .columns {
   display: flex;
-  gap: 16px;
+  gap: 14px;
+  padding-bottom: 8px;
   align-items: flex-start;
   overflow-x: auto;
   flex: 1;
