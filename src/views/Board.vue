@@ -3,9 +3,11 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag } from "../api";
 import { getEditKey, setEditKey } from "../lib/editKey";
+import { rememberBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
 import BoardSettings from "../components/BoardSettings.vue";
+import BoardSwitcher from "../components/BoardSwitcher.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
 
 const route = useRoute();
@@ -97,6 +99,9 @@ async function checkEditAccess() {
 onMounted(async () => {
   await load();
   await checkEditAccess();
+  if (board.value) {
+    rememberBoard({ id: boardId, title: board.value.title, hasKey: !readOnly.value });
+  }
 });
 
 function openCard(card: Card) {
@@ -246,6 +251,7 @@ async function submitKeyEntry() {
     }
     setEditKey(boardId, key);
     readOnly.value = false;
+    rememberBoard({ id: boardId, title: board.value?.title ?? "", hasKey: true });
     showKeyEntry.value = false;
     keyInput.value = "";
   } catch {
@@ -266,9 +272,14 @@ async function onSettingsChanged() {
     <div v-else-if="loadError" class="status-msg">{{ loadError }}</div>
     <template v-else-if="board">
       <header class="board-header">
-        <div>
+        <div class="board-title">
           <h1>{{ board.title }}</h1>
           <span class="prefix-badge">{{ board.prefix }}</span>
+          <BoardSwitcher
+            :current-id="boardId"
+            :current-title="board.title"
+            :current-has-key="!readOnly"
+          />
         </div>
         <div class="header-actions">
           <span v-if="readOnly" class="read-only-badge">Read-only</span>
@@ -518,8 +529,13 @@ async function onSettingsChanged() {
   display: inline;
 }
 
+.board-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .prefix-badge {
-  margin-left: 10px;
   background: var(--badge-bg);
   border-radius: 4px;
   padding: 2px 8px;
