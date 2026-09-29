@@ -13,6 +13,7 @@ import GeneralSettings from "../components/GeneralSettings.vue";
 import AgentsApiSettings from "../components/AgentsApiSettings.vue";
 import FilterBar from "../components/FilterBar.vue";
 import BoardHeader from "../components/BoardHeader.vue";
+import TableView from "../components/TableView.vue";
 import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
 import type { ArchiveView } from "../lib/archive";
@@ -22,6 +23,11 @@ import { useLiveBoard } from "../lib/liveBoard";
 const route = useRoute();
 const router = useRouter();
 const boardId = route.params.id as string;
+const view = computed<"board" | "table">(() => route.query.view === "table" ? "table" : "board");
+
+function setView(next: "board" | "table") {
+  router.replace({ query: { ...route.query, view: next === "table" ? "table" : undefined } });
+}
 
 const board = ref<Board | null>(null);
 const loading = ref(true);
@@ -353,6 +359,10 @@ const filteredColumns = computed<Record<number, Card[]>>(() => {
   return out;
 });
 
+const tableCards = computed(() =>
+  boardColumns.value.flatMap((col) => filteredColumns.value[col.id] ?? [])
+);
+
 // Highest card number on the board (archived included); the next ID must stay above it.
 const highestSeq = computed(() =>
   [...activeCards(), ...archivedCards.value].reduce((max, c) => Math.max(max, c.seq), 0)
@@ -492,6 +502,8 @@ function onBoardSaved(updated: Board) {
         :tag-count="boardTags.length"
         :live-status="live.status.value"
         :viewers="live.viewers.value"
+        :view="view"
+        @update:view="setView"
         @enter-key="showKeyEntry = true"
         @open-columns="activePanel = 'columns'"
         @open-tags="activePanel = 'tags'"
@@ -569,7 +581,7 @@ function onBoardSaved(updated: Board) {
         :filter-active="filterActive"
       />
 
-      <div class="columns">
+      <div v-if="view === 'board'" class="columns">
         <ColumnComp
           v-for="col in boardColumns"
           v-show="activeColumnIds.has(col.id)"
@@ -592,6 +604,17 @@ function onBoardSaved(updated: Board) {
           @add-card="openAddCard(col.id)"
         />
       </div>
+      <TableView
+        v-else
+        :cards="tableCards"
+        :columns="boardColumns"
+        :priorities="boardPriorities"
+        :prefix="board.prefix"
+        :points-enabled="board.pointsEnabled"
+        :dependencies-enabled="board.dependenciesEnabled"
+        :open-blockers="openBlockersByCard"
+        @open="openCard"
+      />
 
       <CardModal
         v-if="modalState"

@@ -16,6 +16,7 @@ defineProps<{
   archivedCount: number;
   liveStatus: "connecting" | "live" | "offline";
   viewers: number;
+  view: "board" | "table";
 }>();
 
 function plural(n: number, word: string) {
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   openPriorities: [];
   openGeneral: [];
   openAgents: [];
+  "update:view": [view: "board" | "table"];
 }>();
 </script>
 
@@ -73,6 +75,33 @@ const emit = defineEmits<{
     </div>
 
     <div class="tb-right">
+      <div class="tb-view-toggle" role="group" aria-label="Board view">
+        <button
+          class="tb-view-button"
+          type="button"
+          :aria-pressed="view === 'board'"
+          @click="emit('update:view', 'board')"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="8" height="16" rx="1.5" />
+            <rect x="13" y="4" width="8" height="10" rx="1.5" />
+          </svg>
+          <span>Board</span>
+        </button>
+        <button
+          class="tb-view-button"
+          type="button"
+          :aria-pressed="view === 'table'"
+          @click="emit('update:view', 'table')"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 10h18M9 10v10M16 10v10" />
+          </svg>
+          <span>Table</span>
+        </button>
+      </div>
+      <span class="tb-divider" aria-hidden="true" />
       <span
         class="live"
         :class="`is-${liveStatus}`"
@@ -292,6 +321,46 @@ button.brand:focus-visible {
   padding-top: 5px;
 }
 
+.tb-view-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+}
+.tb-view-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tb-view-button:hover {
+  color: var(--text);
+}
+.tb-view-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--accent);
+}
+.tb-view-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tb-view-button svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
 .tb-unlock {
   display: inline-flex;
   align-items: center;
@@ -324,6 +393,12 @@ button.brand:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+  .tb-left {
+    flex: 1 1 220px;
+  }
   .live-label {
     display: none;
   }
@@ -333,8 +408,13 @@ button.brand:focus-visible {
   .tb-right {
     padding-top: 1px;
   }
-  .tb-unlock span {
+  .tb-unlock span,
+  .tb-view-button span {
     display: none;
+  }
+  .tb-view-button {
+    width: 30px;
+    padding: 0;
   }
   .tb-unlock {
     width: 34px;
