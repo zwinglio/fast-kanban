@@ -6,6 +6,7 @@ const emit = defineEmits<{
   openTags: [];
   openPriorities: [];
   openGeneral: [];
+  openAgents: [];
 }>();
 
 const open = ref(false);
@@ -33,6 +34,11 @@ function openPriorities() {
 function openGeneral() {
   open.value = false;
   emit("openGeneral");
+}
+
+function openAgents() {
+  open.value = false;
+  emit("openAgents");
 }
 
 function onDocumentMousedown(e: MouseEvent) {
@@ -103,6 +109,14 @@ onUnmounted(() => {
           </svg>
         </span>
         <span>General</span>
+      </button>
+      <button class="config-item" type="button" @click="openAgents">
+        <span class="config-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 8 4 12l4 4M16 8l4 4-4 4M14 5l-4 14" />
+          </svg>
+        </span>
+        <span>Agents &amp; API</span>
       </button>
     </div>
   </div>

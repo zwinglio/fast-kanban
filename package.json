@@ -8,6 +8,8 @@
     "server": "bun --hot server/index.ts",
     "build": "vite build",
     "build:server": "bun build server/index.ts --outdir dist-server --target node --external @prisma/client",
+    "mcp": "bun server/mcp/stdio.ts",
+    "build:mcp": "bun build server/mcp/stdio.ts --outfile dist-mcp/fast-kanban-mcp.js --target node",
     "start": "node dist-server/index.js",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
@@ -16,6 +18,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@prisma/client": "^5.22.0",
     "dompurify": "^3.2.1",
     "hono": "^4.6.9",
@@ -23,7 +26,8 @@
     "nanoid": "^5.0.9",
     "vue": "^3.5.13",
     "vue-router": "^4.4.5",
-    "vuedraggable": "^4.1.0"
+    "vuedraggable": "^4.1.0",
+    "zod": "4.6.2"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

@@ -28,6 +28,7 @@ const emit = defineEmits<{
   openTags: [];
   openPriorities: [];
   openGeneral: [];
+  openAgents: [];
 }>();
 </script>
 
@@ -116,6 +117,7 @@ const emit = defineEmits<{
         @open-tags="emit('openTags')"
         @open-priorities="emit('openPriorities')"
         @open-general="emit('openGeneral')"
+        @open-agents="emit('openAgents')"
       />
       <span class="tb-divider" aria-hidden="true" />
       <ThemeToggle />

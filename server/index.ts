@@ -7,15 +7,22 @@ import { columns } from "./routes/columns.js";
 import { tags } from "./routes/tags.js";
 import { priorities } from "./routes/priorities.js";
 import { comments } from "./routes/comments.js";
+import { agentRoutes } from "./routes/agent.js";
+import { mcpRoutes } from "./routes/mcp.js";
 
+const api = new Hono();
+api.route("/boards", boards);
+api.route("/cards", cards);
+api.route("/columns", columns);
+api.route("/tags", tags);
+api.route("/priorities", priorities);
+api.route("/comments", comments);
+
+const agent = agentRoutes(api);
 const app = new Hono();
-
-app.route("/api/boards", boards);
-app.route("/api/cards", cards);
-app.route("/api/columns", columns);
-app.route("/api/tags", tags);
-app.route("/api/priorities", priorities);
-app.route("/api/comments", comments);
+app.route("/api", api);
+app.route("/api/agent", agent);
+app.route("/api/mcp", mcpRoutes(agent));
 
 // Serve the built SPA. This bundled server is only ever run in production
 // (local dev uses the Vite dev server instead), so no env-var gate is needed

@@ -10,6 +10,7 @@ import BoardSettings from "../components/BoardSettings.vue";
 import PrioritiesSettings from "../components/PrioritiesSettings.vue";
 import TagsSettings from "../components/TagsSettings.vue";
 import GeneralSettings from "../components/GeneralSettings.vue";
+import AgentsApiSettings from "../components/AgentsApiSettings.vue";
 import FilterBar from "../components/FilterBar.vue";
 import BoardHeader from "../components/BoardHeader.vue";
 import ModalShell from "../components/ModalShell.vue";
@@ -49,7 +50,7 @@ const keyInput = ref("");
 const keyEntryError = ref("");
 const keyEntryLoading = ref(false);
 
-const activePanel = ref<"columns" | "tags" | "priorities" | "general" | null>(null);
+const activePanel = ref<"columns" | "tags" | "priorities" | "general" | "agents" | null>(null);
 const density = ref<Density>(getDensity(boardId));
 
 const vFocus = { mounted: (el: HTMLElement) => el.focus() };
@@ -496,6 +497,7 @@ function onBoardSaved(updated: Board) {
         @open-tags="activePanel = 'tags'"
         @open-priorities="activePanel = 'priorities'"
         @open-general="activePanel = 'general'"
+        @open-agents="activePanel = 'agents'"
       />
 
       <div v-if="remoteNotice" class="remote-notice" role="status">
@@ -658,6 +660,12 @@ function onBoardSaved(updated: Board) {
         @close="activePanel = null"
         @saved="onBoardSaved"
         @update:density="onDensityChange"
+      />
+
+      <AgentsApiSettings
+        v-if="activePanel === 'agents'"
+        :board-id="boardId"
+        @close="activePanel = null"
       />
     </template>
   </div>

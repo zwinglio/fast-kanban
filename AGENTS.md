@@ -38,6 +38,12 @@
   should return `{id, editKey}`. Card creation requires the `X-Edit-Key` header matching that board.
 - No `Bun.*` APIs should appear under `server/` (checked via `grep -rn "Bun\." server/`).
 
+## Agent and MCP API
+- Agent REST routes live in `server/routes/agent.ts`; remote stateless MCP is in `server/routes/mcp.ts`, with shared tools in `server/mcp/tools.ts`.
+- `bun run mcp` starts the local stdio MCP server using `FAST_KANBAN_URL`, `FAST_KANBAN_BOARD_ID`, and `FAST_KANBAN_TOKEN` (optional `FAST_KANBAN_AUTHOR`).
+- `bun run build:mcp` bundles the standalone stdio client to `dist-mcp/fast-kanban-mcp.js`; it does not load Prisma.
+- Agent API and MCP calls use the board's existing edit key as a Bearer token. The token grants full edit access.
+
 ## DB user note
 Local dev DB user `kanban` was granted broad privileges (`GRANT ALL ON *.*`) so Prisma can create/drop
 its shadow database during `migrate dev`. Scope this down (`GRANT ALL ON fast_kanban.*` only) for anything

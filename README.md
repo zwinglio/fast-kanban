@@ -143,3 +143,69 @@ Edit-key protected (`X-Edit-Key` header):
 - `DELETE /api/cards/:id`.
 
 See `AGENTS.md` for additional dev/verification notes.
+
+## Agents & MCP
+
+Each board exposes a token-protected agent API and a stateless remote MCP endpoint. The token is the board's existing edit key (the UI's **Agents & API** panel shows the locally saved key); it grants full edit access. Send it as `Authorization: Bearer <token>` or, for REST requests, `X-Edit-Key: <token>`.
+
+REST base URL:
+
+```text
+/api/agent/boards/<boardId>
+```
+
+Available routes:
+
+- `GET /` — board details and valid column, priority, and tag names.
+- `GET /cards` — list cards; optional `column`, `priority`, `tag`, `q`, `archived=false|true|all`, and `limit` (default 100, max 500).
+- `GET /cards/:key` — card details, dependencies, latest comments, and activity. Keys are `PREFIX-123` or a bare number.
+- `POST /cards` — create a card; `PATCH /cards/:key` — update, move, archive, or restore it.
+- `POST /cards/:key/comments` — add a comment.
+- `POST /cards/:key/dependencies` with `{ "blocker": "PROJ-3" }` and `DELETE /cards/:key/dependencies/:blockerKey` — manage dependencies.
+
+Columns, priorities, and tags are resolved by name, case-insensitively. Use `GET /` to discover the valid names. The agent API does not provide board configuration or card deletion.
+
+Example:
+
+```bash
+curl -H "Authorization: Bearer <token>" \\
+  "https://kanban.example.com/api/agent/boards/<boardId>/cards?q=release&archived=false"
+```
+
+### Remote MCP
+
+The remote MCP endpoint is `/api/mcp/<boardId>` and accepts the standard Streamable HTTP protocol. Configure Claude Code:
+
+```bash
+claude mcp add --transport http fast-kanban \\
+  https://kanban.example.com/api/mcp/<boardId> \\
+  --header "Authorization: Bearer <token>"
+```
+
+A generic `mcpServers` entry is:
+
+```json
+{
+  "mcpServers": {
+    "fast-kanban": {
+      "url": "https://kanban.example.com/api/mcp/<boardId>",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+### Local stdio MCP
+
+Set the connection variables and run the standalone Node bundle (or use `bun run mcp` during development):
+
+```bash
+export FAST_KANBAN_URL="https://kanban.example.com"
+export FAST_KANBAN_BOARD_ID="<boardId>"
+export FAST_KANBAN_TOKEN="<token>"
+# Optional comment author:
+export FAST_KANBAN_AUTHOR="Automation"
+node dist-mcp/fast-kanban-mcp.js
+```
+
+Build the standalone file with `bun run build:mcp`. It uses `fetch` to call the remote REST API and does not connect to the database. Keep the token private: it has the same permissions as the board edit key.
