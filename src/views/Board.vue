@@ -2,8 +2,8 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag, type Priority, type Dependency } from "../api";
-import { getEditKey, setEditKey } from "../lib/editKey";
-import { rememberBoard } from "../lib/recentBoards";
+import { getEditKey, setEditKey, clearEditKey } from "../lib/editKey";
+import { rememberBoard, forgetBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
 import CardModal from "../components/CardModal.vue";
 import BoardSettings from "../components/BoardSettings.vue";
@@ -18,7 +18,7 @@ import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
 import type { ArchiveView } from "../lib/archive";
 import { parseCardNumber } from "../lib/cardSearch";
-import { useLiveBoard } from "../lib/liveBoard";
+import { useLiveBoard, type LiveChange } from "../lib/liveBoard";
 
 const route = useRoute();
 const router = useRouter();
@@ -240,7 +240,24 @@ function onDragEnd() {
   if (reloadPending) scheduleReload();
 }
 
-const live = useLiveBoard(boardId, { onChange: scheduleReload, onResync: scheduleReload });
+function onLiveChange(change: LiveChange) {
+  if (change.kind === "deleted") {
+    // The board is gone for good: drop the stale key/list entry and show the not-found state.
+    clearTimeout(reloadTimer);
+    reloadPending = false;
+    clearEditKey(boardId);
+    forgetBoard(boardId);
+    board.value = null;
+    modalState.value = null;
+    loading.value = false;
+    loadError.value = "Board not found.";
+    document.title = "Fast Kanban";
+    return;
+  }
+  scheduleReload();
+}
+
+const live = useLiveBoard(boardId, { onChange: onLiveChange, onResync: scheduleReload });
 
 function syncModalFromRoute() {
   const raw = route.query.card;
@@ -483,6 +500,13 @@ function onBoardSaved(updated: Board) {
   }
   activePanel.value = null;
 }
+
+function onBoardDeleted() {
+  activePanel.value = null;
+  clearEditKey(boardId);
+  forgetBoard(boardId);
+  router.push({ name: "home" });
+}
 </script>
 
 <template>
@@ -682,6 +706,7 @@ function onBoardSaved(updated: Board) {
         :highest-seq="highestSeq"
         @close="activePanel = null"
         @saved="onBoardSaved"
+        @deleted="onBoardDeleted"
         @update:density="onDensityChange"
       />
 

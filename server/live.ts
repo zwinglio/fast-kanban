@@ -4,7 +4,7 @@ import type { Context } from "hono";
 // Node process (PM2 fork mode); running several would need a shared channel (e.g. Redis).
 
 export type LiveChange = {
-  kind: "card" | "board"; // "card": one card (or its links/comments) changed; "board": settings, columns, tags…
+  kind: "card" | "board" | "deleted"; // "card": one card (or its links/comments) changed; "board": settings, columns, tags…; "deleted": the board is gone
   cardId?: number;
   by: string | null; // X-Client-Id of the tab that made the change, so it can ignore its own echo
 };

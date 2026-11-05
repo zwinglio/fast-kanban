@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { updateBoard, ApiError, type Board } from "../api";
+import { deleteBoard, updateBoard, ApiError, type Board } from "../api";
 import { DENSITIES, type Density } from "../lib/density";
 import ModalShell from "./ModalShell.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
@@ -22,6 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   saved: [board: Board];
+  deleted: [];
   "update:density": [density: Density];
 }>();
 
@@ -42,7 +43,33 @@ const saving = ref(false);
 const error = ref("");
 const titleEl = ref<HTMLInputElement | null>(null);
 
+// Deleting requires typing the saved title (not the possibly-edited one above).
+const confirmingDelete = ref(false);
+const deleteConfirm = ref("");
+const deleting = ref(false);
+const canDelete = computed(() => deleteConfirm.value.trim() === props.title);
+
 onMounted(() => titleEl.value?.select());
+
+function cancelDelete() {
+  confirmingDelete.value = false;
+  deleteConfirm.value = "";
+  error.value = "";
+}
+
+async function removeBoard() {
+  if (!canDelete.value || deleting.value) return;
+  deleting.value = true;
+  error.value = "";
+  try {
+    await deleteBoard(props.boardId, deleteConfirm.value.trim());
+    emit("deleted");
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : "Failed to delete board";
+  } finally {
+    deleting.value = false;
+  }
+}
 
 async function save() {
   const trimmed = title.value.trim();
@@ -228,6 +255,40 @@ async function save() {
       <p class="sheet-note">Saved in this browser, for this board.</p>
     </section>
 
+    <section class="sheet-section danger-zone">
+      <div class="sheet-section-head">
+        <span class="sheet-label">Danger zone</span>
+      </div>
+      <p class="sheet-note danger-note">
+        Permanently deletes the board, its cards, comments and history. This can't be undone.
+      </p>
+
+      <button v-if="!confirmingDelete" class="btn danger" type="button" @click="confirmingDelete = true">
+        Delete board…
+      </button>
+      <template v-else>
+        <label class="delete-hint" for="delete-board-confirm">
+          Type <b>{{ props.title }}</b> to confirm
+        </label>
+        <div class="delete-row">
+          <input
+            id="delete-board-confirm"
+            v-model="deleteConfirm"
+            type="text"
+            class="sheet-input"
+            :placeholder="props.title"
+            autocomplete="off"
+            spellcheck="false"
+            @keydown.enter.prevent="removeBoard"
+          />
+          <button class="btn danger" type="button" :disabled="!canDelete || deleting" @click="removeBoard">
+            {{ deleting ? "Deleting..." : "Delete permanently" }}
+          </button>
+          <button class="btn secondary" type="button" :disabled="deleting" @click="cancelDelete">Cancel</button>
+        </div>
+      </template>
+    </section>
+
     <p v-if="error" class="sheet-error">{{ error }}</p>
 
     <template #footer>
@@ -278,6 +339,34 @@ async function save() {
 
 .toggle-gap {
   margin-top: 8px;
+}
+
+.danger-zone .sheet-label {
+  color: var(--danger);
+}
+.danger-note {
+  margin: 0 0 12px;
+}
+.delete-hint {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+.delete-hint b {
+  overflow-wrap: anywhere;
+}
+.delete-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.delete-row .sheet-input {
+  flex: 1;
+  min-width: 0;
+}
+.delete-row .btn {
+  flex: none;
 }
 
 .seq-row {
@@ -428,6 +517,12 @@ async function save() {
 @media (max-width: 520px) {
   .density-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .delete-row {
+    flex-wrap: wrap;
+  }
+  .delete-row .sheet-input {
+    flex-basis: 100%;
   }
 }
 </style>

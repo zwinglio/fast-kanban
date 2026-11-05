@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { customAlphabet } from "nanoid";
-import type { Prisma } from "@prisma/client";
+import type { Board, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { hashEditKey, isValidPrefix, requireEditKey, verifyEditKey } from "../auth.js";
 import { DEFAULT_COLUMNS, MAX_COLUMNS, isValidPaletteColor } from "../columns.js";
@@ -18,7 +18,7 @@ const nanoidKey = customAlphabet(
   24
 );
 
-export const boards = new Hono();
+export const boards = new Hono<{ Variables: { board: Board } }>();
 
 // Card numbers can start (or continue) above 1 for teams migrating from another tracker.
 const MAX_SEQ = 999_999;
@@ -200,6 +200,29 @@ boards.patch("/:id", requireEditKey, async (c) => {
   const board = await prisma.board.update({ where: { id: boardId }, data });
   notifyBoard(c, boardId, "board");
   return c.json(publicBoard(board));
+});
+
+// DELETE /api/boards/:id - permanently delete a board and everything on it (edit-key protected).
+// The client must echo the board title, so deleting is never a single accidental click.
+boards.delete("/:id", requireEditKey, async (c) => {
+  const board = c.get("board");
+  const boardId = c.req.param("id");
+  if (!boardId) return c.json({ error: "Missing board id" }, 400);
+  const body = await c.req.json().catch(() => null);
+  const confirm = typeof body?.confirm === "string" ? body.confirm.trim() : "";
+  if (confirm !== board.title) {
+    return c.json({ error: "Type the board title to confirm" }, 400);
+  }
+
+  // Cards → Column has no onDelete rule (RESTRICT), so the board cascade would fail if the
+  // columns were removed first. Deleting cards explicitly lets the rest cascade from them.
+  await prisma.$transaction([
+    prisma.card.deleteMany({ where: { boardId } }),
+    prisma.board.delete({ where: { id: boardId } }),
+  ]);
+
+  notifyBoard(c, boardId, "deleted");
+  return c.json({ ok: true });
 });
 
 // GET /api/boards/:id/stream?client=<tabId> - Server-Sent Events: "change" when anything on the

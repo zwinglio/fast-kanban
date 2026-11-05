@@ -121,6 +121,13 @@ export function verifyEditKey(id: string, key: string) {
   });
 }
 
+export function deleteBoard(boardId: string, confirm: string) {
+  return request<{ ok: true }>(`/boards/${boardId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirm }),
+  }, boardId);
+}
+
 export function createCard(
   boardId: string,
   payload: {

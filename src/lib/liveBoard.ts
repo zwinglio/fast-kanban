@@ -4,7 +4,7 @@ import { CLIENT_ID } from "../api";
 export type LiveStatus = "connecting" | "live" | "offline";
 
 export interface LiveChange {
-  kind: "card" | "board";
+  kind: "card" | "board" | "deleted";
   cardId?: number;
   by: string | null;
 }
