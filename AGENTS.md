@@ -29,7 +29,9 @@
   `pm2 restart fast-kanban`.
 
 ## Verification
-- Typecheck: `bunx vue-tsc --noEmit`
+- Typecheck: `./node_modules/.bin/vue-tsc --noEmit` with Node on `PATH`. Running vue-tsc under
+  Bun alone ("bunx vue-tsc") silently skips `.vue` files, so it can miss SFC type errors that CI
+  (`ubuntu-latest` with Node) will catch.
 - Frontend build: `bunx vite build`
 - Backend smoke test:
   ```

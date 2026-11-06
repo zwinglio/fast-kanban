@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { createBoard, ApiError, apiErrorMessage } from "../api";
 import { relativeTime } from "../lib/formatTime";
 import { setEditKey } from "../lib/editKey";
+import { asLocale } from "../lib/locale";
 import { forgetBoard, getRecentBoards, type RecentBoard } from "../lib/recentBoards";
 import ThemeToggle from "../components/ThemeToggle.vue";
 import LanguageToggle from "../components/LanguageToggle.vue";
@@ -81,7 +82,7 @@ async function submit() {
       title.value.trim(),
       prefix.value,
       continueNumbering.value ? startNumber.value : undefined,
-      locale.value
+      asLocale(locale.value)
     );
     setEditKey(id, editKey);
     router.push({ name: "board", params: { id }, query: { newKey: "1" } });

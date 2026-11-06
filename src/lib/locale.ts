@@ -17,6 +17,11 @@ export const LOCALES: LocaleOption[] = [
 
 const STORAGE_KEY = "fk_locale";
 
+/** Narrows a composer/BCP-47 locale string to a supported locale (unknown → en). */
+export function asLocale(value: string): Locale {
+  return value === "pt-BR" ? "pt-BR" : "en";
+}
+
 /** The browser's preferred locale: Portuguese gets pt-BR, everything else en. */
 export function detectLocale(): Locale {
   const tag = typeof navigator !== "undefined" ? navigator.language || "" : "";
