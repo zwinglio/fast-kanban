@@ -25,6 +25,7 @@ export interface Priority {
 export interface Card {
   id: number;
   boardId: string;
+  uuid: string; // stable card identity used by shareable links (see src/lib/cardLink.ts)
   seq: number;
   title: string;
   body: string | null;

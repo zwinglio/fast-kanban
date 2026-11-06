@@ -18,6 +18,7 @@ import ModalShell from "../components/ModalShell.vue";
 import { getDensity, setDensity, type Density } from "../lib/density";
 import type { ArchiveView } from "../lib/archive";
 import { parseCardNumber } from "../lib/cardSearch";
+import { cardRoute, cardSlug, parseCardSlug } from "../lib/cardLink";
 import { useLiveBoard, type LiveChange } from "../lib/liveBoard";
 
 const route = useRoute();
@@ -171,23 +172,36 @@ onMounted(async () => {
   syncModalFromRoute();
 });
 
-// The open card lives in the URL (?card=<number>) so cards can be linked, shared,
-// opened in a new tab, and stepped through with the browser's back button.
-function queryWithCard(seq: number | null) {
+// The open card lives in the URL (/b/<boardId>/<slug>-<uuid>) so cards can be linked,
+// shared, opened in a new tab, and stepped through with the browser's back button.
+// The readable slug is decoration; the trailing UUID is what finds the card.
+
+/** Compares UUIDs ignoring dashes/case, so a link works whatever form the UUID takes. */
+function uuidKey(uuid: string) {
+  return uuid.replace(/-/g, "").toLowerCase();
+}
+
+// The board URL without the card segment, keeping the current query (view and filters).
+function boardLocation() {
   const query = { ...route.query };
-  if (seq === null) delete query.card;
-  else query.card = String(seq);
-  return query;
+  delete query.card; // legacy links carried the card number in the query
+  return { name: "board" as const, params: { id: boardId }, query };
+}
+
+function routeToCard(card: Card) {
+  return cardRoute(boardId, board.value?.prefix ?? "", card, route.query);
 }
 
 function openCard(card: Card) {
   modalState.value = { mode: "edit", card };
-  if (route.query.card !== String(card.seq)) router.replace({ query: queryWithCard(card.seq) });
+  if (route.params.cardSlug !== cardSlug(board.value?.prefix ?? "", card)) {
+    router.replace(routeToCard(card));
+  }
 }
 
 // Following a link from inside a card (e.g. a dependency) adds a history entry.
 function navigateToCard(card: Card) {
-  router.push({ query: queryWithCard(card.seq) });
+  router.push(routeToCard(card));
 }
 
 function openAddCard(columnId: number) {
@@ -196,7 +210,9 @@ function openAddCard(columnId: number) {
 
 function closeModal() {
   modalState.value = null;
-  if (route.query.card !== undefined) router.replace({ query: queryWithCard(null) });
+  if (route.params.cardSlug !== undefined || route.query.card !== undefined) {
+    router.replace(boardLocation());
+  }
 }
 
 // ---- Live updates -------------------------------------------------------------------
@@ -225,6 +241,8 @@ async function runReload() {
   const fresh = allCards.value.find((c) => c.id === openId);
   if (fresh) {
     modalState.value = { ...modalState.value, card: fresh };
+    // A rename (or prefix change) in another tab must not leave the URL on the old slug.
+    syncOpenCardSlug();
   } else {
     remoteNotice.value = `${board.value?.prefix}-${modalState.value.card?.seq} was deleted by someone else.`;
     closeModal();
@@ -260,18 +278,60 @@ function onLiveChange(change: LiveChange) {
 const live = useLiveBoard(boardId, { onChange: onLiveChange, onResync: scheduleReload });
 
 function syncModalFromRoute() {
-  const raw = route.query.card;
-  const seq = typeof raw === "string" ? Number(raw) : NaN;
-  if (!Number.isInteger(seq)) {
-    if (modalState.value?.mode === "edit") modalState.value = null;
+  // The board data is what turns a URL UUID into a card; the first sync runs after load().
+  if (!board.value) return;
+  const prefix = board.value.prefix;
+
+  // Old links put the card number in the query: /b/<id>?card=12 -> /b/<id>/<slug>.
+  const legacy = route.query.card;
+  if (legacy !== undefined) {
+    const seq = typeof legacy === "string" ? Number(legacy) : NaN;
+    const card = Number.isInteger(seq) ? allCards.value.find((c) => c.seq === seq) : undefined;
+    if (card) {
+      modalState.value = { mode: "edit", card };
+      router.replace(cardRoute(boardId, prefix, card, route.query));
+    } else {
+      router.replace(boardLocation());
+    }
     return;
   }
-  if (modalState.value?.card?.seq === seq) return;
-  const card = allCards.value.find((c) => c.seq === seq);
-  if (card) modalState.value = { mode: "edit", card };
+
+  const raw = route.params.cardSlug as string | string[] | undefined;
+  const uuid = parseCardSlug(raw);
+  if (uuid === null) {
+    // No card in the URL: just the board.
+    if (modalState.value?.mode === "edit") modalState.value = null;
+    if (raw !== undefined) router.replace(boardLocation());
+    return;
+  }
+
+  const wanted = uuidKey(uuid);
+  const card = allCards.value.find((c) => c.uuid && uuidKey(c.uuid) === wanted);
+  if (!card) {
+    // A UUID that matches no card on this board: close the modal and drop the stale segment.
+    modalState.value = null;
+    if (raw !== undefined) router.replace(boardLocation());
+    return;
+  }
+
+  // The readable part is decoration: correct a stale slug after a rename, in place.
+  if (raw !== cardSlug(prefix, card)) router.replace(cardRoute(boardId, prefix, card, route.query));
+  if (modalState.value?.mode === "edit" && modalState.value.card?.id === card.id) return;
+  modalState.value = { mode: "edit", card };
 }
 
-watch(() => route.query.card, syncModalFromRoute);
+// After a quiet/live reload the open card object may have a new title (rename) or the board
+// a new prefix; keep the address bar on the current slug.
+function syncOpenCardSlug() {
+  const state = modalState.value;
+  if (!board.value || state?.mode !== "edit" || !state.card) return;
+  const canonical = cardSlug(board.value.prefix, state.card);
+  if (route.params.cardSlug !== canonical) {
+    router.replace(cardRoute(boardId, board.value.prefix, state.card, route.query));
+  }
+}
+
+watch(() => route.fullPath, syncModalFromRoute);
 
 function onCommentCount(cardId: number, count: number) {
   const card = allCards.value.find((c) => c.id === cardId);
@@ -490,6 +550,8 @@ async function submitKeyEntry() {
 
 async function onSettingsChanged() {
   await load({ quiet: true });
+  // A prefix change rewrites every card slug; keep the URL of the open card current.
+  syncOpenCardSlug();
 }
 
 function onBoardSaved(updated: Board) {

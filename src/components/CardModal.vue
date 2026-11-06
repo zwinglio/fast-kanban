@@ -15,6 +15,7 @@ import {
   type Tag,
 } from "../api";
 import { renderMarkdown } from "../lib/markdown";
+import { cardRoute } from "../lib/cardLink";
 import PriorityIcon from "./PriorityIcon.vue";
 import CardActivity from "./CardActivity.vue";
 import CardDependencies from "./CardDependencies.vue";
@@ -323,7 +324,7 @@ let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function copyLink() {
   if (!props.card) return;
-  const href = router.resolve({ query: { ...route.query, card: String(props.card.seq) } }).href;
+  const href = router.resolve(cardRoute(props.boardId, props.prefix, props.card, route.query)).href;
   try {
     await navigator.clipboard.writeText(new URL(href, window.location.origin).toString());
     copyState.value = "copied";

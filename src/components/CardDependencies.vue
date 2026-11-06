@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { Card, Column, Dependency } from "../api";
+import { cardRoute } from "../lib/cardLink";
 import { parseCardNumber } from "../lib/cardSearch";
 
 const MAX_RESULTS = 8;
@@ -26,7 +27,7 @@ const route = useRoute();
 const router = useRouter();
 
 function cardHref(c: Card) {
-  return router.resolve({ query: { ...route.query, card: String(c.seq) } }).href;
+  return router.resolve(cardRoute(c.boardId, props.prefix, c, route.query)).href;
 }
 
 // Plain clicks open the card in place (the modal can guard unsaved edits);

@@ -109,6 +109,7 @@ model CardComment {
 model Card {
   id         Int              @id @default(autoincrement())
   boardId    String           @map("board_id") @db.VarChar(12)
+  uuid       String           @unique @default(uuid()) @db.Char(36) // stable public id (links, agent API)
   seq        Int // display id = prefix + "-" + seq
   title      String           @db.VarChar(255)
   body       String?          @db.MediumText // markdown

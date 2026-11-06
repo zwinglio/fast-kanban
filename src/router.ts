@@ -7,7 +7,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "home", component: Home },
-    { path: "/b/:id", name: "board", component: Board, props: true },
+    { path: "/b/:id/:cardSlug?", name: "board", component: Board, props: true },
     { path: "/:pathMatch(.*)*", name: "not-found", component: NotFound },
   ],
 });
