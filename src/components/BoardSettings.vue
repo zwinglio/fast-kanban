@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import draggable from "vuedraggable";
-import { createColumn, updateColumn, deleteColumn, ApiError, type Column } from "../api";
+import { createColumn, updateColumn, deleteColumn, ApiError, apiErrorMessage, type Column } from "../api";
 import { PALETTE } from "../lib/palette";
 import ModalShell from "./ModalShell.vue";
 
 const MAX_COLUMNS = 8;
 const NEW_COLUMN = -1; // swatch popover id for the "add column" row
+
+const { t } = useI18n();
+
+/** Localised message for a failed API call, with a translated fallback. */
+function errorText(e: unknown, fallbackKey: string): string {
+  return e instanceof ApiError ? apiErrorMessage(e) : t(fallbackKey);
+}
 
 const props = defineProps<{
   boardId: string;
@@ -39,8 +47,8 @@ function cardCount(col: Column) {
 }
 
 function deleteBlockedReason(col: Column) {
-  if (cardCount(col) > 0) return "Move or delete its cards first";
-  if (localColumns.value.length <= 1) return "A board needs at least one column";
+  if (cardCount(col) > 0) return t("settings.columns.blockedHasCards");
+  if (localColumns.value.length <= 1) return t("settings.columns.blockedLastColumn");
   return "";
 }
 
@@ -51,7 +59,7 @@ async function saveName(col: Column) {
     return;
   }
   if (!name || name.length > 50) {
-    error.value = "Column name must be 1-50 chars";
+    error.value = t("settings.columns.nameLength");
     return;
   }
   error.value = "";
@@ -60,7 +68,7 @@ async function saveName(col: Column) {
     const updated = await updateColumn(props.boardId, col.id, { name });
     Object.assign(col, updated);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to rename column";
+    error.value = errorText(e, "settings.columns.renameFailed");
   } finally {
     savingId.value = null;
   }
@@ -80,7 +88,7 @@ async function saveColor(col: Column) {
     Object.assign(col, updated);
     showSwatchFor.value = null;
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to update color";
+    error.value = errorText(e, "settings.columns.colorFailed");
   } finally {
     savingId.value = null;
   }
@@ -95,7 +103,7 @@ async function onDragEnd() {
       try {
         await updateColumn(props.boardId, col.id, { position: i });
       } catch (e) {
-        error.value = e instanceof ApiError ? e.message : "Failed to reorder columns";
+        error.value = errorText(e, "settings.columns.reorderFailed");
       }
     }
   }
@@ -117,7 +125,7 @@ async function removeColumn(col: Column) {
     confirmDeleteId.value = null;
     emit("changed");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to delete column";
+    error.value = errorText(e, "settings.columns.deleteFailed");
   } finally {
     deletingId.value = null;
   }
@@ -126,11 +134,11 @@ async function removeColumn(col: Column) {
 async function addColumn() {
   const name = newColumnName.value.trim();
   if (!name || name.length > 50) {
-    error.value = "Column name must be 1-50 chars";
+    error.value = t("settings.columns.nameLength");
     return;
   }
   if (localColumns.value.length >= MAX_COLUMNS) {
-    error.value = `Maximum ${MAX_COLUMNS} columns`;
+    error.value = t("settings.columns.maxReached", { max: MAX_COLUMNS });
     return;
   }
   error.value = "";
@@ -142,7 +150,7 @@ async function addColumn() {
     showSwatchFor.value = null;
     emit("changed");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to add column";
+    error.value = errorText(e, "settings.columns.addFailed");
   } finally {
     addingColumn.value = false;
   }
@@ -184,14 +192,14 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
 
 <template>
   <ModalShell
-    title="Columns & statuses"
-    subtitle="Rename, recolor and drag to reorder the board's columns."
+    :title="t('settings.columns.title')"
+    :subtitle="t('settings.columns.subtitle')"
     :width="520"
     @close="emit('close')"
   >
     <section class="sheet-section" @keydown.esc="onEscape">
       <div class="sheet-section-head">
-        <span class="sheet-label">Columns</span>
+        <span class="sheet-label">{{ t("settings.columns.sectionLabel") }}</span>
         <span class="sheet-count">{{ localColumns.length }} / {{ MAX_COLUMNS }}</span>
       </div>
 
@@ -206,7 +214,7 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
         <template #item="{ element }">
           <div class="sheet-row" :class="{ 'is-confirming': confirmDeleteId === element.id }">
             <div v-if="confirmDeleteId === element.id" class="sheet-confirm">
-              <span>Delete column “{{ element.name }}”?</span>
+              <span>{{ t("settings.columns.deleteConfirm", { name: element.name }) }}</span>
               <button
                 v-focus
                 type="button"
@@ -214,12 +222,12 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 :disabled="deletingId === element.id"
                 @click="removeColumn(element)"
               >
-                {{ deletingId === element.id ? "Deleting..." : "Delete" }}
+                {{ deletingId === element.id ? t("settings.columns.deleting") : t("common.delete") }}
               </button>
-              <button type="button" class="no" @click="confirmDeleteId = null">Cancel</button>
+              <button type="button" class="no" @click="confirmDeleteId = null">{{ t("common.cancel") }}</button>
             </div>
             <template v-else>
-              <span class="sheet-grip" title="Drag to reorder" aria-hidden="true">
+              <span class="sheet-grip" :title="t('settings.columns.dragToReorder')" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
                   <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
@@ -230,8 +238,8 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 type="button"
                 class="sheet-swatch-btn"
                 :style="{ background: element.color }"
-                :title="'Change color'"
-                :aria-label="`Change color of ${element.name}`"
+                :title="t('settings.columns.changeColor')"
+                :aria-label="t('settings.columns.changeColorOf', { name: element.name })"
                 :aria-expanded="showSwatchFor === element.id"
                 @click="toggleSwatches(element.id)"
               />
@@ -240,7 +248,7 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 type="text"
                 maxlength="50"
                 class="sheet-inline-input"
-                :aria-label="`Rename column ${element.name}`"
+                :aria-label="t('settings.columns.renameAria', { name: element.name })"
                 :disabled="savingId === element.id"
                 @focus="nameBeforeEdit = element.name"
                 @blur="saveName(element)"
@@ -248,13 +256,13 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 @keydown.esc.prevent="revertName(element, $event)"
               />
               <span class="sheet-meta">
-                {{ cardCount(element) }} {{ cardCount(element) === 1 ? "card" : "cards" }}
+                {{ cardCount(element) }} {{ t("settings.columns.cardWord", cardCount(element)) }}
               </span>
               <button
                 class="sheet-icon-btn danger"
                 type="button"
-                :title="deleteBlockedReason(element) || 'Delete column'"
-                :aria-label="`Delete column ${element.name}`"
+                :title="deleteBlockedReason(element) || t('settings.columns.deleteColumn')"
+                :aria-label="t('settings.columns.deleteAria', { name: element.name })"
                 :disabled="!!deleteBlockedReason(element)"
                 @click="confirmDeleteId = element.id"
               >
@@ -270,8 +278,8 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                   class="sheet-swatch"
                   :class="{ selected: element.color === sw.hex }"
                   :style="{ background: sw.hex }"
-                  :title="sw.name"
-                  :aria-label="sw.name"
+                  :title="t(sw.labelKey)"
+                  :aria-label="t(sw.labelKey)"
                   @click="selectSwatch(element, sw.hex)"
                 />
               </div>
@@ -285,8 +293,8 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
           type="button"
           class="sheet-swatch-btn"
           :style="{ background: newColumnColor }"
-          title="Pick a color"
-          aria-label="Pick a color for the new column"
+          :title="t('settings.columns.pickColor')"
+          :aria-label="t('settings.columns.pickColorNew')"
           :aria-expanded="showSwatchFor === NEW_COLUMN"
           @click="toggleSwatches(NEW_COLUMN)"
         />
@@ -295,12 +303,12 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
           type="text"
           maxlength="50"
           class="sheet-input"
-          placeholder="New column name"
-          aria-label="New column name"
+          :placeholder="t('settings.columns.newName')"
+          :aria-label="t('settings.columns.newName')"
           @keydown.enter.prevent="addColumn"
         />
         <button class="btn secondary" type="button" :disabled="addingColumn" @click="addColumn">
-          {{ addingColumn ? "Adding..." : "Add" }}
+          {{ addingColumn ? t("settings.columns.adding") : t("common.add") }}
         </button>
         <div v-if="showSwatchFor === NEW_COLUMN" class="sheet-swatches">
           <button
@@ -310,19 +318,19 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
             class="sheet-swatch"
             :class="{ selected: newColumnColor === sw.hex }"
             :style="{ background: sw.hex }"
-            :title="sw.name"
-            :aria-label="sw.name"
+            :title="t(sw.labelKey)"
+            :aria-label="t(sw.labelKey)"
             @click="selectNewSwatch(sw.hex)"
           />
         </div>
       </div>
-      <p v-else class="sheet-note">Column limit reached ({{ MAX_COLUMNS }}).</p>
+      <p v-else class="sheet-note">{{ t("settings.columns.limitReached", { max: MAX_COLUMNS }) }}</p>
     </section>
 
     <p v-if="error" class="sheet-error">{{ error }}</p>
 
     <template #footer>
-      <button class="btn" type="button" @click="emit('close')">Done</button>
+      <button class="btn" type="button" @click="emit('close')">{{ t("common.done") }}</button>
     </template>
   </ModalShell>
 </template>

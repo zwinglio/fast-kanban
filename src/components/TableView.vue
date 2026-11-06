@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import type { Card, Column, Priority } from "../api";
 import PriorityIcon from "./PriorityIcon.vue";
 
@@ -12,6 +13,8 @@ const props = defineProps<{
   dependenciesEnabled: boolean;
   openBlockers: Record<number, string[]>;
 }>();
+
+const { t, d } = useI18n();
 
 const emit = defineEmits<{ open: [card: Card] }>();
 
@@ -81,9 +84,9 @@ function priorityFor(card: Card) {
 function updatedLabel(timestamp: string) {
   const date = new Date(timestamp);
   const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  if (days < 1) return "Today";
-  if (days === 1) return "Yesterday";
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  if (days < 1) return t("table.today");
+  if (days === 1) return t("table.yesterday");
+  return d(date, "short");
 }
 
 function openFromKeyboard(event: KeyboardEvent, card: Card) {
@@ -100,37 +103,37 @@ function openFromKeyboard(event: KeyboardEvent, card: Card) {
       <thead>
         <tr>
           <th class="key-col" scope="col" :aria-sort="ariaSort('key')">
-            <button type="button" @click="cycleSort('key')">Key <span aria-hidden="true">{{ sortIndicator('key') }}</span></button>
+            <button type="button" @click="cycleSort('key')">{{ t("table.key") }} <span aria-hidden="true">{{ sortIndicator('key') }}</span></button>
           </th>
           <th class="title-col" scope="col" :aria-sort="ariaSort('title')">
-            <button type="button" @click="cycleSort('title')">Title <span aria-hidden="true">{{ sortIndicator('title') }}</span></button>
+            <button type="button" @click="cycleSort('title')">{{ t("table.title") }} <span aria-hidden="true">{{ sortIndicator('title') }}</span></button>
           </th>
           <th scope="col" :aria-sort="ariaSort('status')">
-            <button type="button" @click="cycleSort('status')">Status <span aria-hidden="true">{{ sortIndicator('status') }}</span></button>
+            <button type="button" @click="cycleSort('status')">{{ t("table.status") }} <span aria-hidden="true">{{ sortIndicator('status') }}</span></button>
           </th>
           <th scope="col" :aria-sort="ariaSort('priority')">
-            <button type="button" @click="cycleSort('priority')">Priority <span aria-hidden="true">{{ sortIndicator('priority') }}</span></button>
+            <button type="button" @click="cycleSort('priority')">{{ t("table.priority") }} <span aria-hidden="true">{{ sortIndicator('priority') }}</span></button>
           </th>
-          <th scope="col">Tags</th>
+          <th scope="col">{{ t("table.tags") }}</th>
           <th v-if="pointsEnabled" scope="col" :aria-sort="ariaSort('points')">
-            <button type="button" @click="cycleSort('points')">Points <span aria-hidden="true">{{ sortIndicator('points') }}</span></button>
+            <button type="button" @click="cycleSort('points')">{{ t("table.points") }} <span aria-hidden="true">{{ sortIndicator('points') }}</span></button>
           </th>
-          <th v-if="dependenciesEnabled" scope="col">Blocked by</th>
+          <th v-if="dependenciesEnabled" scope="col">{{ t("table.blockedBy") }}</th>
           <th scope="col" :aria-sort="ariaSort('updated')">
-            <button type="button" @click="cycleSort('updated')">Updated <span aria-hidden="true">{{ sortIndicator('updated') }}</span></button>
+            <button type="button" @click="cycleSort('updated')">{{ t("table.updated") }} <span aria-hidden="true">{{ sortIndicator('updated') }}</span></button>
           </th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="!sortedCards.length">
-          <td class="empty-state" :colspan="visibleColumnCount">No cards match the current filters.</td>
+          <td class="empty-state" :colspan="visibleColumnCount">{{ t("table.empty") }}</td>
         </tr>
         <tr
           v-for="card in sortedCards"
           :key="card.id"
           class="card-row"
           tabindex="0"
-          :aria-label="`Open ${prefix}-${card.seq}: ${card.title}`"
+          :aria-label="t('table.openCard', { key: `${prefix}-${card.seq}`, title: card.title })"
           @click="emit('open', card)"
           @keydown="openFromKeyboard($event, card)"
         >
@@ -138,7 +141,7 @@ function openFromKeyboard(event: KeyboardEvent, card: Card) {
           <td class="title-col">
             <span class="title-content">
               <span class="title-text" :title="card.title">{{ card.title }}</span>
-              <span v-if="card.archivedAt" class="archived-badge">Archived</span>
+              <span v-if="card.archivedAt" class="archived-badge">{{ t("table.archived") }}</span>
             </span>
           </td>
           <td>
@@ -168,7 +171,7 @@ function openFromKeyboard(event: KeyboardEvent, card: Card) {
             <span v-else class="muted">—</span>
           </td>
           <td>
-            <time class="updated-cell" :datetime="card.updatedAt" :title="new Date(card.updatedAt).toLocaleString()">
+            <time class="updated-cell" :datetime="card.updatedAt" :title="d(new Date(card.updatedAt), 'long')">
               {{ updatedLabel(card.updatedAt) }}
             </time>
           </td>

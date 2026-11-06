@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { getCardEvents, type CardEvent } from "../api";
+import { useI18n } from "vue-i18n";
+import { ApiError, apiErrorMessage, getCardEvents, type CardEvent } from "../api";
+import { dateTime, relativeTime } from "../lib/formatTime";
 
 const PREVIEW = 4;
 const PAGE = 10;
+
+const { t, n, locale } = useI18n();
 
 const props = defineProps<{
   cardId: number;
@@ -29,8 +33,8 @@ async function loadFirst() {
     events.value = res.events;
     hasMore.value = res.hasMore;
     total.value = res.total;
-  } catch {
-    error.value = "Couldn't load activity.";
+  } catch (e) {
+    error.value = errorText(e, "activity.loadError");
   } finally {
     loading.value = false;
   }
@@ -50,100 +54,149 @@ async function showMore() {
     events.value = [...events.value, ...res.events];
     hasMore.value = res.hasMore;
     total.value = res.total;
-  } catch {
-    error.value = "Couldn't load more activity.";
+  } catch (e) {
+    error.value = errorText(e, "activity.loadMoreError");
   } finally {
     loadingMore.value = false;
   }
+}
+
+/** Localised API error when the server sent a known code, else the generic message. */
+function errorText(e: unknown, fallbackKey: string) {
+  return e instanceof ApiError ? apiErrorMessage(e) : t(fallbackKey);
 }
 
 function showLess() {
   expanded.value = false;
 }
 
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+// Both follow the active locale (the helpers read `locale.value` on every render).
 function relative(iso: string) {
-  const ts = new Date(iso).getTime();
-  const minutes = Math.round((ts - Date.now()) / 60_000);
-  if (minutes > -1) return "just now";
-  if (minutes > -60) return rtf.format(minutes, "minute");
-  const hours = Math.round(minutes / 60);
-  if (hours > -24) return rtf.format(hours, "hour");
-  const days = Math.round(hours / 24);
-  if (days > -7) return rtf.format(days, "day");
-  return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return relativeTime(iso, locale.value);
 }
 
 function absolute(iso: string) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return dateTime(iso, locale.value);
 }
 
 type Part = { text: string; strong?: boolean };
 
-function pts(n: number) {
-  return `${n} ${n === 1 ? "point" : "points"}`;
+// Sentences come from one message key with named params. Vue I18n returns a flat
+// string, so the params that should stay bold are wrapped in private-use markers
+// and split back into plain-text parts here (never rendered as HTML).
+const STRONG_START = "\uE000";
+const STRONG_END = "\uE001";
+
+function sentence(key: string, params: Record<string, string> = {}, strong: string[] = [], plural?: number): Part[] {
+  const values: Record<string, string> = {};
+  for (const [name, value] of Object.entries(params)) {
+    values[name] = strong.includes(name) ? `${STRONG_START}${value}${STRONG_END}` : value;
+  }
+  const text = plural === undefined ? t(key, values) : t(key, { ...values, n: plural });
+  const parts: Part[] = [];
+  let rest = text;
+  while (rest) {
+    const start = rest.indexOf(STRONG_START);
+    if (start < 0) {
+      parts.push({ text: rest });
+      break;
+    }
+    if (start > 0) parts.push({ text: rest.slice(0, start) });
+    const end = rest.indexOf(STRONG_END, start);
+    parts.push({ text: rest.slice(start + 1, end), strong: true });
+    rest = rest.slice(end + 1);
+  }
+  return parts;
+}
+
+// "1 point" / "2 points", with the count formatted for the active locale.
+function pointsLabel(value: number) {
+  return t("activity.points", { n: value, formatted: n(value, "integer") });
 }
 
 // Builds the sentence for an entry as plain parts (rendered as text, never as HTML).
 function describe(e: CardEvent): Part[] {
   switch (e.type) {
     case "created":
-      return [{ text: "Created in " }, { text: e.data.column, strong: true }];
+      return sentence("activity.created", { column: e.data.column }, ["column"]);
     case "moved":
-      return [{ text: "Moved from " }, { text: e.data.from, strong: true }, { text: " to " }, { text: e.data.to, strong: true }];
+      return sentence("activity.moved", { from: e.data.from, to: e.data.to }, ["from", "to"]);
     case "title":
-      return [{ text: "Renamed to " }, { text: `“${e.data.to}”`, strong: true }];
+      return sentence("activity.renamed", { title: `“${e.data.to}”` }, ["title"]);
     case "description":
-      return [{ text: "Edited the description" }];
+      return sentence("activity.description");
     case "priority":
       if (!e.data.to && e.data.reason === "deleted") {
-        return [{ text: "Priority " }, { text: e.data.from ?? "", strong: true }, { text: " was deleted from the board" }];
+        return sentence("activity.priorityDeleted", { priority: e.data.from ?? "" }, ["priority"]);
       }
-      if (!e.data.to) return [{ text: "Removed priority " }, { text: e.data.from ?? "", strong: true }];
-      if (!e.data.from) return [{ text: "Set priority to " }, { text: e.data.to, strong: true }];
-      return [{ text: "Priority " }, { text: e.data.from, strong: true }, { text: " → " }, { text: e.data.to, strong: true }];
+      if (!e.data.to) return sentence("activity.priorityRemoved", { priority: e.data.from ?? "" }, ["priority"]);
+      if (!e.data.from) return sentence("activity.prioritySet", { priority: e.data.to }, ["priority"]);
+      return sentence("activity.priorityChanged", { from: e.data.from, to: e.data.to }, ["from", "to"]);
     case "tags": {
       if (e.data.reason === "deleted") {
-        return [{ text: "Tag " }, { text: e.data.removed.join(", "), strong: true }, { text: " was deleted from the board" }];
+        return sentence("activity.tagDeleted", { tags: e.data.removed.join(", ") }, ["tags"]);
       }
+      const added = e.data.added.length > 0;
       const parts: Part[] = [];
-      if (e.data.added.length) {
-        parts.push({ text: e.data.added.length === 1 ? "Added tag " : "Added tags " });
-        parts.push({ text: e.data.added.join(", "), strong: true });
+      if (added) {
+        parts.push(...sentence("activity.tagAdded", { tags: e.data.added.join(", ") }, ["tags"], e.data.added.length));
       }
       if (e.data.removed.length) {
-        parts.push({ text: parts.length ? " · removed " : e.data.removed.length === 1 ? "Removed tag " : "Removed tags " });
-        parts.push({ text: e.data.removed.join(", "), strong: true });
+        if (added) parts.push({ text: " · " });
+        parts.push(
+          ...sentence(
+            added ? "activity.tagRemovedInline" : "activity.tagRemoved",
+            { tags: e.data.removed.join(", ") },
+            ["tags"],
+            e.data.removed.length
+          )
+        );
       }
       return parts;
     }
     case "points":
-      if (e.data.to === null) return [{ text: "Cleared the estimate" }];
-      if (e.data.from === null) return [{ text: "Estimated at " }, { text: pts(e.data.to), strong: true }];
-      return [{ text: "Estimate " }, { text: pts(e.data.from), strong: true }, { text: " → " }, { text: pts(e.data.to), strong: true }];
-    case "dependency": {
-      const other = { text: e.data.card, strong: true };
+      if (e.data.to === null) return sentence("activity.pointsCleared");
+      if (e.data.from === null) return sentence("activity.pointsSet", { points: pointsLabel(e.data.to) }, ["points"]);
+      return sentence(
+        "activity.pointsChanged",
+        { from: pointsLabel(e.data.from), to: pointsLabel(e.data.to) },
+        ["from", "to"]
+      );
+    case "dependency":
       if (e.data.reason === "deleted") {
-        return [other, { text: e.data.role === "blocked_by" ? " (a blocker) was deleted" : " (blocked by this card) was deleted" }];
+        return sentence(
+          e.data.role === "blocked_by" ? "activity.dependencyBlockerDeleted" : "activity.dependencyBlockedDeleted",
+          { card: e.data.card },
+          ["card"]
+        );
       }
       if (e.data.role === "blocked_by") {
-        return e.data.action === "added"
-          ? [{ text: "Marked as blocked by " }, other]
-          : [{ text: "No longer blocked by " }, other];
+        return sentence(
+          e.data.action === "added" ? "activity.dependencyBlockedByAdded" : "activity.dependencyBlockedByRemoved",
+          { card: e.data.card },
+          ["card"]
+        );
       }
-      return e.data.action === "added" ? [{ text: "Now blocks " }, other] : [{ text: "No longer blocks " }, other];
-    }
+      return sentence(
+        e.data.action === "added" ? "activity.dependencyBlocksAdded" : "activity.dependencyBlocksRemoved",
+        { card: e.data.card },
+        ["card"]
+      );
     case "comment": {
-      const who = e.data.author || "Anonymous";
+      const author = e.data.author || t("common.anonymous");
       if (e.data.action === "added") {
-        return [{ text: who, strong: true }, { text: " commented " }, { text: `“${e.data.excerpt}”` }];
+        return sentence("activity.commentAdded", { author, excerpt: `“${e.data.excerpt}”` }, ["author"]);
       }
-      return [{ text: e.data.action === "edited" ? "Edited a comment by " : "Deleted a comment by " }, { text: who, strong: true }];
+      return sentence(
+        e.data.action === "edited" ? "activity.commentEdited" : "activity.commentDeleted",
+        { author },
+        ["author"]
+      );
     }
     case "archived":
-      return [{ text: "Archived" }];
+      return sentence("activity.archived");
     case "restored":
-      return [{ text: "Restored from the archive" }];
+      return sentence("activity.restored");
   }
 }
 
@@ -165,9 +218,9 @@ onMounted(loadFirst);
 </script>
 
 <template>
-  <section class="activity" aria-label="Card activity">
+  <section class="activity" :aria-label="t('activity.ariaLabel')">
     <div class="activity-head">
-      <span class="label">Activity</span>
+      <span class="label">{{ t("activity.label") }}</span>
       <span v-if="!loading && total" class="count">{{ total }}</span>
     </div>
 
@@ -179,10 +232,10 @@ onMounted(loadFirst);
     </ul>
 
     <p v-else-if="error && !events.length" class="empty">
-      {{ error }} <button type="button" class="link" @click="loadFirst">Try again</button>
+      {{ error }} <button type="button" class="link" @click="loadFirst">{{ t("common.retry") }}</button>
     </p>
 
-    <p v-else-if="!events.length" class="empty">No activity yet.</p>
+    <p v-else-if="!events.length" class="empty">{{ t("activity.empty") }}</p>
 
     <template v-else>
       <ol class="timeline">
@@ -207,10 +260,10 @@ onMounted(loadFirst);
 
       <div v-if="canShowMore || expanded" class="activity-foot">
         <button v-if="canShowMore" type="button" class="link" :disabled="loadingMore" @click="showMore">
-          {{ loadingMore ? "Loading…" : "Show more" }}
+          {{ loadingMore ? t("common.loading") : t("activity.showMore") }}
         </button>
         <button v-if="expanded && events.length > 4" type="button" class="link muted" @click="showLess">
-          Show less
+          {{ t("activity.showLess") }}
         </button>
       </div>
     </template>

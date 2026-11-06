@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { prisma } from "../db.js";
 import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
+import { fail, type ErrorCode } from "../errors.js";
 import { eventRows, type CardEventInput } from "../events.js";
 import { MAX_POINTS, parsePoints } from "../points.js";
 import {
@@ -16,14 +17,19 @@ import {
 
 export const cards = new Hono();
 
+/** Edit-key auth failure that routes turn into `fail(c, status, code, error)`. */
+function editKeyFailure(status: 401 | 404, code: ErrorCode, error: string) {
+  return { ok: false as const, status, code, error };
+}
+
 async function requireCardEditKey(cardId: number, key: string | undefined) {
-  if (!key) return { ok: false as const, status: 401 as const, error: "Missing edit key" };
+  if (!key) return editKeyFailure(401, "MISSING_EDIT_KEY", "Missing edit key");
   const card = await prisma.card.findUnique({ where: { id: cardId } });
-  if (!card) return { ok: false as const, status: 404 as const, error: "Card not found" };
+  if (!card) return editKeyFailure(404, "CARD_NOT_FOUND", "Card not found");
   const board = await prisma.board.findUnique({ where: { id: card.boardId } });
-  if (!board) return { ok: false as const, status: 404 as const, error: "Board not found" };
+  if (!board) return editKeyFailure(404, "BOARD_NOT_FOUND", "Board not found");
   const valid = await verifyEditKey(key, board.editHash);
-  if (!valid) return { ok: false as const, status: 401 as const, error: "Invalid edit key" };
+  if (!valid) return editKeyFailure(401, "INVALID_EDIT_KEY", "Invalid edit key");
   return { ok: true as const, card, board };
 }
 
@@ -32,32 +38,39 @@ const MAX_BLOCKERS = 20;
 // POST /api/cards/:id/dependencies { blockerId } - mark this card as blocked by another card
 cards.post("/:id/dependencies", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
 
   const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const body = await c.req.json().catch(() => null);
   const blockerId = Number(body?.blockerId);
-  if (!Number.isInteger(blockerId)) return c.json({ error: "Invalid blocker card" }, 400);
-  if (blockerId === id) return c.json({ error: "A card can't block itself" }, 400);
+  if (!Number.isInteger(blockerId)) return fail(c, 400, "INVALID_BLOCKER_CARD", "Invalid blocker card");
+  if (blockerId === id) return fail(c, 400, "CARD_SELF_DEPENDENCY", "A card can't block itself");
 
   const boardId = check.card.boardId;
   const blocker = await prisma.card.findFirst({ where: { id: blockerId, boardId } });
-  if (!blocker) return c.json({ error: "Blocker must be a card on this board" }, 400);
+  if (!blocker) return fail(c, 400, "CARD_BLOCKER_OTHER_BOARD", "Blocker must be a card on this board");
 
   const links = await prisma.cardDependency.findMany({
     where: { boardId },
     select: { blockedId: true, blockerId: true },
   });
   if (links.some((l) => l.blockedId === id && l.blockerId === blockerId)) {
-    return c.json({ error: "That dependency already exists" }, 400);
+    return fail(c, 400, "CARD_DEPENDENCY_EXISTS", "That dependency already exists");
   }
   if (links.filter((l) => l.blockedId === id).length >= MAX_BLOCKERS) {
-    return c.json({ error: `A card can be blocked by at most ${MAX_BLOCKERS} cards` }, 400);
+    return fail(c, 400, "CARD_MAX_BLOCKERS", `A card can be blocked by at most ${MAX_BLOCKERS} cards`, {
+      max: MAX_BLOCKERS,
+    });
   }
   if (wouldCreateCycle(links, id, blockerId)) {
-    return c.json({ error: "That would create a loop — the other card already depends on this one" }, 400);
+    return fail(
+      c,
+      400,
+      "CARD_DEPENDENCY_CYCLE",
+      "That would create a loop — the other card already depends on this one"
+    );
   }
 
   const prefix = check.board.prefix;
@@ -82,16 +95,18 @@ cards.post("/:id/dependencies", async (c) => {
 cards.delete("/:id/dependencies/:blockerId", async (c) => {
   const id = Number(c.req.param("id"));
   const blockerId = Number(c.req.param("blockerId"));
-  if (!Number.isInteger(id) || !Number.isInteger(blockerId)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id) || !Number.isInteger(blockerId)) {
+    return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
+  }
 
   const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const link = await prisma.cardDependency.findUnique({
     where: { blockedId_blockerId: { blockedId: id, blockerId } },
     include: { blocker: { select: { seq: true, title: true } } },
   });
-  if (!link) return c.json({ error: "Dependency not found" }, 404);
+  if (!link) return fail(c, 404, "DEPENDENCY_NOT_FOUND", "Dependency not found");
 
   const boardId = check.card.boardId;
   const prefix = check.board.prefix;
@@ -136,18 +151,18 @@ function wouldCreateCycle(links: { blockedId: number; blockerId: number }[], blo
 // GET /api/cards/:id/events?limit=4&before=<eventId> - newest-first activity (public, like the board)
 cards.get("/:id/events", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
 
   const limitParam = Number(c.req.query("limit") ?? 4);
   const limit = Number.isInteger(limitParam) ? Math.min(Math.max(limitParam, 1), 50) : 4;
   const beforeParam = c.req.query("before");
   const before = beforeParam !== undefined ? Number(beforeParam) : undefined;
   if (before !== undefined && !Number.isInteger(before)) {
-    return c.json({ error: "Invalid cursor" }, 400);
+    return fail(c, 400, "INVALID_CURSOR", "Invalid cursor");
   }
 
   const card = await prisma.card.findUnique({ where: { id }, select: { id: true } });
-  if (!card) return c.json({ error: "Card not found" }, 404);
+  if (!card) return fail(c, 404, "CARD_NOT_FOUND", "Card not found");
 
   const [rows, total] = await Promise.all([
     prisma.cardEvent.findMany({
@@ -166,18 +181,18 @@ cards.get("/:id/events", async (c) => {
 // with hasMore when there are earlier ones (public, like the board)
 cards.get("/:id/comments", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
 
   const limitParam = Number(c.req.query("limit") ?? 5);
   const limit = Number.isInteger(limitParam) ? Math.min(Math.max(limitParam, 1), 50) : 5;
   const beforeParam = c.req.query("before");
   const before = beforeParam !== undefined ? Number(beforeParam) : undefined;
   if (before !== undefined && !Number.isInteger(before)) {
-    return c.json({ error: "Invalid cursor" }, 400);
+    return fail(c, 400, "INVALID_CURSOR", "Invalid cursor");
   }
 
   const card = await prisma.card.findUnique({ where: { id }, select: { id: true } });
-  if (!card) return c.json({ error: "Card not found" }, 404);
+  if (!card) return fail(c, 404, "CARD_NOT_FOUND", "Card not found");
 
   const [rows, total] = await Promise.all([
     prisma.cardComment.findMany({
@@ -194,16 +209,24 @@ cards.get("/:id/comments", async (c) => {
 // POST /api/cards/:id/comments { body, author? } - add a comment (edit-key protected)
 cards.post("/:id/comments", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
 
   const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const payload = await c.req.json().catch(() => null);
   const body = parseCommentBody(payload?.body);
-  if (body === null) return c.json({ error: `Comment must be 1-${MAX_COMMENT_LENGTH} characters` }, 400);
+  if (body === null) {
+    return fail(c, 400, "COMMENT_LENGTH", `Comment must be 1-${MAX_COMMENT_LENGTH} characters`, {
+      max: MAX_COMMENT_LENGTH,
+    });
+  }
   const author = parseAuthor(payload?.author);
-  if (!author.ok) return c.json({ error: `Name must be at most ${MAX_AUTHOR_LENGTH} characters` }, 400);
+  if (!author.ok) {
+    return fail(c, 400, "COMMENT_AUTHOR_LENGTH", `Name must be at most ${MAX_AUTHOR_LENGTH} characters`, {
+      max: MAX_AUTHOR_LENGTH,
+    });
+  }
 
   const [comment] = await prisma.$transaction([
     prisma.cardComment.create({
@@ -222,13 +245,13 @@ cards.post("/:id/comments", async (c) => {
 // PATCH /api/cards/:id - edit fields and/or move (columnId/position)
 cards.patch("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
 
   const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const body = await c.req.json().catch(() => null);
-  if (!body) return c.json({ error: "Invalid body" }, 400);
+  if (!body) return fail(c, 400, "INVALID_BODY", "Invalid body");
 
   const data: Record<string, unknown> = {};
   let newColumnName: string | null = null;
@@ -237,7 +260,7 @@ cards.patch("/:id", async (c) => {
   if (body.title !== undefined) {
     const title = String(body.title).trim();
     if (!title || title.length > 255) {
-      return c.json({ error: "Title must be 1-255 chars" }, 400);
+      return fail(c, 400, "CARD_TITLE_LENGTH", "Title must be 1-255 chars", { min: 1, max: 255 });
     }
     data.title = title;
   }
@@ -247,14 +270,14 @@ cards.patch("/:id", async (c) => {
   if (body.columnId !== undefined) {
     const columnId = Number(body.columnId);
     if (!Number.isInteger(columnId)) {
-      return c.json({ error: "Invalid column id" }, 400);
+      return fail(c, 400, "INVALID_COLUMN_ID", "Invalid column id");
     }
     // Verify the column belongs to the card's board
     const col = await prisma.column.findFirst({
       where: { id: columnId, boardId: check.card.boardId },
     });
     if (!col) {
-      return c.json({ error: "Invalid column" }, 400);
+      return fail(c, 400, "INVALID_COLUMN", "Invalid column");
     }
     data.columnId = columnId;
     newColumnName = col.name;
@@ -262,7 +285,7 @@ cards.patch("/:id", async (c) => {
   if (body.position !== undefined) {
     const position = Number(body.position);
     if (!Number.isInteger(position) || position < 0) {
-      return c.json({ error: "Invalid position" }, 400);
+      return fail(c, 400, "INVALID_POSITION", "Invalid position");
     }
     data.position = position;
   }
@@ -277,7 +300,7 @@ cards.patch("/:id", async (c) => {
             select: { id: true, name: true },
           })
         : null;
-      if (!owned) return c.json({ error: "Invalid priority" }, 400);
+      if (!owned) return fail(c, 400, "INVALID_PRIORITY", "Invalid priority");
       data.priorityId = priorityId;
       newPriorityName = owned.name;
     }
@@ -285,14 +308,18 @@ cards.patch("/:id", async (c) => {
 
   if (body.points !== undefined) {
     const parsed = parsePoints(body.points);
-    if (!parsed.ok) return c.json({ error: `Story points must be a whole number from 0 to ${MAX_POINTS}` }, 400);
+    if (!parsed.ok) {
+      return fail(c, 400, "CARD_STORY_POINTS_RANGE", `Story points must be a whole number from 0 to ${MAX_POINTS}`, {
+        max: MAX_POINTS,
+      });
+    }
     data.points = parsed.value;
   }
 
   // archived: true stamps archivedAt; false restores the card to the end of its column.
   if (body.archived !== undefined) {
     if (typeof body.archived !== "boolean") {
-      return c.json({ error: "Invalid archived flag" }, 400);
+      return fail(c, 400, "CARD_ARCHIVED_FLAG_INVALID", "Invalid archived flag");
     }
     if (body.archived) {
       if (!check.card.archivedAt) data.archivedAt = new Date();
@@ -334,10 +361,10 @@ cards.patch("/:id", async (c) => {
 // DELETE /api/cards/:id
 cards.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid card id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_CARD_ID", "Invalid card id");
 
   const check = await requireCardEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const links = await prisma.cardDependency.findMany({
     where: { OR: [{ blockedId: id }, { blockerId: id }] },

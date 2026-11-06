@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import {
   addDependency,
   removeDependency,
   createCard,
   updateCard,
   deleteCard,
+  apiErrorMessage,
   ApiError,
   type Card,
   type Column,
@@ -49,6 +51,7 @@ const emit = defineEmits<{
 
 const route = useRoute();
 const router = useRouter();
+const { t, d } = useI18n();
 
 const isNew = props.card === null;
 const title = ref(props.card?.title ?? "");
@@ -148,17 +151,12 @@ watch(
   }
 );
 
-const displayId = computed(() => (props.card ? `${props.prefix}-${props.card.seq}` : "New card"));
+const displayId = computed(() => (props.card ? `${props.prefix}-${props.card.seq}` : t("cardModal.newCard")));
 const currentPriority = computed(() => props.boardPriorities.find((p) => p.id === priorityId.value) ?? null);
 const currentColumn = computed(() => props.boardColumns.find((c) => c.id === columnId.value));
 const selectedTags = computed(() => props.boardTags.filter((t) => selectedTagIds.value.includes(t.id)));
 const availableTags = computed(() => props.boardTags.filter((t) => !selectedTagIds.value.includes(t.id)));
 const preview = computed(() => renderMarkdown(body.value));
-
-const dateFmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
-function formatDate(iso: string) {
-  return dateFmt.format(new Date(iso));
-}
 
 function autoGrow(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -200,14 +198,12 @@ function removeTag(id: number) {
   if (i >= 0) selectedTagIds.value.splice(i, 1);
 }
 
-const PLACEHOLDER_TITLE = "Untitled";
-
 async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {}) {
   if (saving.value) return;
   error.value = "";
-  const trimmedTitle = title.value.trim() || (opts.usePlaceholder ? PLACEHOLDER_TITLE : "");
+  const trimmedTitle = title.value.trim() || (opts.usePlaceholder ? t("common.untitled") : "");
   if (!trimmedTitle) {
-    error.value = "Title is required";
+    error.value = t("cardModal.titleRequired");
     titleEl.value?.focus();
     return;
   }
@@ -238,7 +234,7 @@ async function save(opts: { usePlaceholder?: boolean; archived?: boolean } = {})
       emit("saved", updated);
     }
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to save card";
+    error.value = e instanceof ApiError ? apiErrorMessage(e) : t("cardModal.saveFailed");
   } finally {
     saving.value = false;
   }
@@ -267,7 +263,7 @@ async function persistDependencies(cardId: number): Promise<boolean> {
       await removeDependency(props.boardId, d.blockedId, d.blockerId);
       result = result.filter((x) => key(x) !== key(d));
     } catch (e) {
-      failure = e instanceof ApiError ? e.message : "Couldn't remove a dependency";
+      failure = e instanceof ApiError ? apiErrorMessage(e) : t("cardModal.dependencyRemoveFailed");
     }
   }
   for (const d of added) {
@@ -275,14 +271,14 @@ async function persistDependencies(cardId: number): Promise<boolean> {
       await addDependency(props.boardId, d.blockedId, d.blockerId);
       result = [...result, d];
     } catch (e) {
-      failure = e instanceof ApiError ? e.message : "Couldn't add a dependency";
+      failure = e instanceof ApiError ? apiErrorMessage(e) : t("cardModal.dependencyAddFailed");
     }
   }
   emit("dependenciesChanged", result);
   if (failure && !isNew) {
     depDraft.value = result;
     baseDeps = result;
-    error.value = `Card saved, but a dependency wasn't: ${failure}`;
+    error.value = t("cardModal.dependencySaveFailed", { error: failure });
     return false;
   }
   return true;
@@ -366,7 +362,7 @@ async function remove() {
     await deleteCard(props.boardId, props.card.id);
     emit("deleted", props.card.id);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to delete card";
+    error.value = e instanceof ApiError ? apiErrorMessage(e) : t("cardModal.deleteFailed");
     confirmingDelete.value = false;
   } finally {
     deleting.value = false;
@@ -423,7 +419,7 @@ onBeforeUnmount(() => {
               <rect x="3" y="4" width="18" height="5" rx="1.5" />
               <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
             </svg>
-            Archived
+            {{ t("cardModal.archived") }}
           </span>
           <span class="crumb">
             <template v-if="boardTitle">{{ boardTitle }} <b>/</b> </template>{{ currentColumn?.name ?? "" }}
@@ -435,8 +431,8 @@ onBeforeUnmount(() => {
             class="close-btn"
             :class="{ copied: copyState === 'copied' }"
             type="button"
-            :title="copyState === 'copied' ? 'Link copied' : copyState === 'failed' ? 'Couldn’t copy — use the address bar' : 'Copy link to this card'"
-            :aria-label="copyState === 'copied' ? 'Link copied' : 'Copy link to this card'"
+            :title="copyState === 'copied' ? t('common.linkCopied') : copyState === 'failed' ? t('cardModal.copyFailed') : t('cardModal.copyLink')"
+            :aria-label="copyState === 'copied' ? t('common.linkCopied') : t('cardModal.copyLink')"
             @click="copyLink"
           >
             <svg v-if="copyState === 'copied'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -447,7 +443,7 @@ onBeforeUnmount(() => {
               <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
             </svg>
           </button>
-          <button class="close-btn" type="button" title="Close (Esc)" aria-label="Close" @click="requestClose">
+          <button class="close-btn" type="button" :title="t('common.closeEsc')" :aria-label="t('common.close')" @click="requestClose">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -459,9 +455,9 @@ onBeforeUnmount(() => {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" />
         </svg>
-        <span>Someone else changed this card while you were editing.</span>
-        <button type="button" class="banner-btn primary" @click="applyLatest">Load latest</button>
-        <button type="button" class="banner-btn" @click="keepMine">Keep mine</button>
+        <span>{{ t("cardModal.remoteChanged") }}</span>
+        <button type="button" class="banner-btn primary" @click="applyLatest">{{ t("cardModal.loadLatest") }}</button>
+        <button type="button" class="banner-btn" @click="keepMine">{{ t("cardModal.keepMine") }}</button>
       </div>
 
       <div class="m-body">
@@ -473,23 +469,23 @@ onBeforeUnmount(() => {
             class="title-input"
             rows="1"
             maxlength="255"
-            placeholder="Card title"
-            aria-label="Card title"
+            :placeholder="t('cardModal.cardTitle')"
+            :aria-label="t('cardModal.cardTitle')"
             :readonly="readOnly"
             @keydown.enter.exact.prevent="setMode('edit')"
           />
 
           <div v-if="card" class="sub-meta">
-            <span>Created {{ formatDate(card.createdAt) }}</span>
+            <span>{{ t("cardModal.createdAt", { date: d(card.createdAt, "medium") }) }}</span>
             <span class="dot-sep" />
-            <span>Updated {{ formatDate(card.updatedAt) }}</span>
+            <span>{{ t("cardModal.updatedAt", { date: d(card.updatedAt, "medium") }) }}</span>
           </div>
 
           <div class="block-head">
-            <span class="label">Description</span>
-            <div v-if="!readOnly" class="seg" role="group" aria-label="Description mode">
-              <button type="button" :aria-pressed="mode === 'edit'" @click="setMode('edit')">Edit</button>
-              <button type="button" :aria-pressed="mode === 'preview'" @click="setMode('preview')">Preview</button>
+            <span class="label">{{ t("cardModal.description") }}</span>
+            <div v-if="!readOnly" class="seg" role="group" :aria-label="t('cardModal.descriptionMode')">
+              <button type="button" :aria-pressed="mode === 'edit'" @click="setMode('edit')">{{ t("common.edit") }}</button>
+              <button type="button" :aria-pressed="mode === 'preview'" @click="setMode('preview')">{{ t("cardModal.preview") }}</button>
             </div>
           </div>
 
@@ -499,16 +495,16 @@ onBeforeUnmount(() => {
               ref="bodyEl"
               v-model="body"
               class="md-input"
-              aria-label="Description (Markdown)"
-              placeholder="Describe the problem, expected behavior and acceptance criteria…"
+              :aria-label="t('cardModal.descriptionMarkdown')"
+              :placeholder="t('cardModal.descriptionPlaceholder')"
             />
             <div v-else class="md-preview">
               <div v-if="preview" class="markdown-body" v-html="preview" />
-              <p v-else class="empty">No description yet.</p>
+              <p v-else class="empty">{{ t("cardModal.noDescription") }}</p>
             </div>
             <div v-if="!readOnly" class="md-foot">
-              <span>Markdown supported · <kbd>Ctrl</kbd> <kbd>↵</kbd> saves</span>
-              <span>{{ body.length }} chars</span>
+              <span>{{ t("cardModal.markdownSupported") }} · <kbd>Ctrl</kbd> <kbd>↵</kbd> {{ t("cardModal.markdownSaves") }}</span>
+              <span>{{ t("cardModal.charCount", body.length) }}</span>
             </div>
           </div>
 
@@ -526,10 +522,10 @@ onBeforeUnmount(() => {
 
         <aside class="m-rail">
           <section class="rail-sec">
-            <div class="rail-sec-head"><span class="label">Column</span></div>
+            <div class="rail-sec-head"><span class="label">{{ t("cardModal.column") }}</span></div>
             <div class="select-wrap">
               <span class="dot" :style="{ background: currentColumn?.color || 'var(--muted)' }" />
-              <select v-model="columnId" :disabled="readOnly" aria-label="Column">
+              <select v-model="columnId" :disabled="readOnly" :aria-label="t('cardModal.column')">
                 <option v-for="col in boardColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
               </select>
               <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -539,11 +535,11 @@ onBeforeUnmount(() => {
           </section>
 
           <section class="rail-sec">
-            <div class="rail-sec-head"><span class="label">Priority</span></div>
+            <div class="rail-sec-head"><span class="label">{{ t("cardModal.priority") }}</span></div>
             <div class="select-wrap">
               <span class="select-icon"><PriorityIcon :color="currentPriority?.color" :size="14" /></span>
-              <select v-model="priorityId" :disabled="readOnly" aria-label="Priority">
-                <option :value="null">No priority</option>
+              <select v-model="priorityId" :disabled="readOnly" :aria-label="t('cardModal.priority')">
+                <option :value="null">{{ t("cardModal.noPriority") }}</option>
                 <option v-for="p in boardPriorities" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
               <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -554,17 +550,17 @@ onBeforeUnmount(() => {
 
           <section v-if="pointsEnabled" class="rail-sec">
             <div class="rail-sec-head">
-              <span class="label">Story points</span>
+              <span class="label">{{ t("cardModal.storyPoints") }}</span>
               <button
                 v-if="points !== null && !readOnly"
                 type="button"
                 class="clear-link"
                 @click="points = null"
               >
-                Clear
+                {{ t("common.clear") }}
               </button>
             </div>
-            <div class="points" role="radiogroup" aria-label="Story points">
+            <div class="points" role="radiogroup" :aria-label="t('cardModal.storyPoints')">
               <button
                 v-for="n in POINT_SCALE"
                 :key="n"
@@ -586,18 +582,18 @@ onBeforeUnmount(() => {
                 step="1"
                 inputmode="numeric"
                 placeholder="#"
-                aria-label="Custom story points"
+                :aria-label="t('cardModal.customStoryPoints')"
                 :value="points !== null && !POINT_SCALE.includes(points) ? points : ''"
                 :disabled="readOnly"
                 @change="onPointsInput"
               />
             </div>
-            <p v-if="points === null" class="rail-empty">Not estimated</p>
+            <p v-if="points === null" class="rail-empty">{{ t("cardModal.notEstimated") }}</p>
           </section>
 
           <section class="rail-sec">
             <div class="rail-sec-head">
-              <span class="label">Tags</span>
+              <span class="label">{{ t("cardModal.tags") }}</span>
               <span class="count">{{ selectedTags.length }}</span>
             </div>
             <div v-if="boardTags.length" class="tags">
@@ -607,7 +603,7 @@ onBeforeUnmount(() => {
                   v-if="!readOnly"
                   type="button"
                   class="x"
-                  :aria-label="`Remove tag ${tag.name}`"
+                  :aria-label="t('cardModal.removeTag', { name: tag.name })"
                   @click="removeTag(tag.id)"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
@@ -617,7 +613,7 @@ onBeforeUnmount(() => {
               </span>
               <div v-if="!readOnly && availableTags.length" ref="tagPickerEl" class="tag-picker">
                 <button type="button" class="tag-add" :aria-expanded="tagPickerOpen" @click="tagPickerOpen = !tagPickerOpen">
-                  <span aria-hidden="true">+</span> Add
+                  <span aria-hidden="true">+</span> {{ t("common.add") }}
                 </button>
                 <ul v-if="tagPickerOpen" class="tag-menu" role="listbox">
                   <li v-for="tag in availableTags" :key="tag.id">
@@ -625,9 +621,9 @@ onBeforeUnmount(() => {
                   </li>
                 </ul>
               </div>
-              <span v-if="readOnly && !selectedTags.length" class="rail-empty">No tags</span>
+              <span v-if="readOnly && !selectedTags.length" class="rail-empty">{{ t("cardModal.noTags") }}</span>
             </div>
-            <div v-else class="rail-empty">No tags yet — add them in board settings.</div>
+            <div v-else class="rail-empty">{{ t("cardModal.noTagsYet") }}</div>
           </section>
 
           <section v-if="dependenciesEnabled" class="rail-sec">
@@ -653,11 +649,11 @@ onBeforeUnmount(() => {
         <div>
           <template v-if="!isNew">
             <div v-if="confirmingDelete" class="confirm">
-              <span>Delete {{ displayId }} permanently?</span>
+              <span>{{ t("cardModal.deleteConfirm", { id: displayId }) }}</span>
               <button type="button" class="go" :disabled="deleting" @click="remove">
-                {{ deleting ? "Deleting..." : "Delete" }}
+                {{ deleting ? t("cardModal.deleting") : t("common.delete") }}
               </button>
-              <button type="button" class="no" @click="confirmingDelete = false">Cancel</button>
+              <button type="button" class="no" @click="confirmingDelete = false">{{ t("common.cancel") }}</button>
             </div>
             <div v-else class="foot-left">
               <button
@@ -673,25 +669,25 @@ onBeforeUnmount(() => {
                   <rect x="3" y="4" width="18" height="5" rx="1.5" />
                   <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
                 </svg>
-                {{ isArchived ? "Restore" : archiving ? "Archiving..." : "Archive" }}
+                {{ isArchived ? t("cardModal.restore") : archiving ? t("cardModal.archiving") : t("cardModal.archive") }}
               </button>
-              <button type="button" class="btn-ghost-danger" @click="confirmingDelete = true">Delete card</button>
+              <button type="button" class="btn-ghost-danger" @click="confirmingDelete = true">{{ t("cardModal.deleteCard") }}</button>
             </div>
           </template>
         </div>
 
         <div v-if="confirmingDiscard" class="confirm">
           <span>
-            {{ pendingNavigation ? `Discard unsaved changes and open ${prefix}-${pendingNavigation.seq}?` : "Discard unsaved changes?" }}
+            {{ pendingNavigation ? t("cardModal.discardAndOpen", { id: `${prefix}-${pendingNavigation.seq}` }) : t("cardModal.discardChanges") }}
           </span>
-          <button type="button" class="go" @click="discardChanges">Discard</button>
-          <button type="button" class="no" @click="keepEditing">Keep editing</button>
+          <button type="button" class="go" @click="discardChanges">{{ t("cardModal.discard") }}</button>
+          <button type="button" class="no" @click="keepEditing">{{ t("cardModal.keepEditing") }}</button>
         </div>
         <div v-else class="foot-right">
-          <span v-if="dirty" class="dirty"><span class="dot" />Unsaved changes</span>
-          <button type="button" class="btn secondary" @click="requestClose">Cancel</button>
+          <span v-if="dirty" class="dirty"><span class="dot" />{{ t("cardModal.unsavedChanges") }}</span>
+          <button type="button" class="btn secondary" @click="requestClose">{{ t("common.cancel") }}</button>
           <button type="button" class="btn" :disabled="saving || (!isNew && !dirty)" @click="save()">
-            {{ saving ? "Saving..." : "Save" }}
+            {{ saving ? t("cardModal.saving") : t("common.save") }}
           </button>
         </div>
       </div>

@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
-import { addComment, deleteComment, editComment, getComments, ApiError, type CardComment } from "../api";
+import { useI18n } from "vue-i18n";
+import { addComment, deleteComment, editComment, getComments, ApiError, apiErrorMessage, type CardComment } from "../api";
 import { renderMarkdown } from "../lib/markdown";
 import { MAX_AUTHOR_LENGTH, getCommentAuthor, setCommentAuthor } from "../lib/commentAuthor";
+import { dateTime, relativeTime } from "../lib/formatTime";
 
 const PAGE = 5;
 const MAX_LENGTH = 5000;
+
+const { t, n, locale } = useI18n();
 
 const props = defineProps<{
   boardId: string;
@@ -56,8 +60,8 @@ async function loadLatest() {
     comments.value = res.comments;
     hasEarlier.value = res.hasMore;
     setTotal(res.total);
-  } catch {
-    loadError.value = "Couldn't load comments.";
+  } catch (e) {
+    loadError.value = errorText(e, "comments.loadError");
   } finally {
     loading.value = false;
   }
@@ -71,8 +75,8 @@ async function loadEarlier() {
     comments.value = [...res.comments, ...comments.value];
     hasEarlier.value = res.hasMore;
     setTotal(res.total);
-  } catch {
-    actionError.value = "Couldn't load earlier comments.";
+  } catch (e) {
+    actionError.value = errorText(e, "comments.loadEarlierError");
   } finally {
     loadingEarlier.value = false;
   }
@@ -97,7 +101,7 @@ async function post() {
     draft.value = "";
     nextTick(() => autoGrow(composerEl.value));
   } catch (e) {
-    postError.value = e instanceof ApiError ? e.message : "Couldn't post the comment.";
+    postError.value = errorText(e, "comments.postError");
   } finally {
     posting.value = false;
   }
@@ -159,7 +163,7 @@ async function saveEdit(c: CardComment) {
     editingId.value = null;
     emit("changed");
   } catch (e) {
-    actionError.value = e instanceof ApiError ? e.message : "Couldn't save the comment.";
+    actionError.value = errorText(e, "comments.saveError");
   } finally {
     savingEdit.value = false;
   }
@@ -184,8 +188,13 @@ async function remove(c: CardComment) {
     setTotal(Math.max(0, total.value - 1));
     emit("changed");
   } catch (e) {
-    actionError.value = e instanceof ApiError ? e.message : "Couldn't delete the comment.";
+    actionError.value = errorText(e, "comments.deleteError");
   }
+}
+
+/** Localised API error when the server sent a known code, else the generic message. */
+function errorText(e: unknown, fallbackKey: string) {
+  return e instanceof ApiError ? apiErrorMessage(e) : t(fallbackKey);
 }
 
 function initials(name: string | null) {
@@ -194,21 +203,13 @@ function initials(name: string | null) {
   return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
 }
 
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+// Both follow the active locale (the helpers read `locale.value` on every render).
 function relative(iso: string) {
-  const ts = new Date(iso).getTime();
-  const minutes = Math.round((ts - Date.now()) / 60_000);
-  if (minutes > -1) return "just now";
-  if (minutes > -60) return rtf.format(minutes, "minute");
-  const hours = Math.round(minutes / 60);
-  if (hours > -24) return rtf.format(hours, "hour");
-  const days = Math.round(hours / 24);
-  if (days > -7) return rtf.format(days, "day");
-  return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return relativeTime(iso, locale.value);
 }
 
 function absolute(iso: string) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return dateTime(iso, locale.value);
 }
 
 function isEdited(c: CardComment) {
@@ -219,20 +220,20 @@ onMounted(loadLatest);
 </script>
 
 <template>
-  <section class="comments" aria-label="Comments">
+  <section class="comments" :aria-label="t('comments.title')">
     <div class="block-head">
-      <span class="label">Comments</span>
+      <span class="label">{{ t("comments.title") }}</span>
       <span v-if="total" class="count">{{ total }}</span>
     </div>
 
-    <p v-if="loading" class="muted-line">Loading comments…</p>
+    <p v-if="loading" class="muted-line">{{ t("comments.loading") }}</p>
     <p v-else-if="loadError" class="muted-line">
-      {{ loadError }} <button type="button" class="link" @click="loadLatest">Try again</button>
+      {{ loadError }} <button type="button" class="link" @click="loadLatest">{{ t("common.retry") }}</button>
     </p>
 
     <template v-else>
       <button v-if="hasEarlier" type="button" class="earlier" :disabled="loadingEarlier" @click="loadEarlier">
-        {{ loadingEarlier ? "Loading…" : `Show earlier comments (${earlierCount})` }}
+        {{ loadingEarlier ? t("common.loading") : t("comments.showEarlier", { count: n(earlierCount, "integer") }) }}
       </button>
 
       <ol v-if="comments.length" class="thread">
@@ -240,12 +241,14 @@ onMounted(loadLatest);
           <span class="avatar" :class="{ anon: !c.author }" aria-hidden="true">{{ initials(c.author) }}</span>
           <div class="comment-main">
             <div class="comment-meta">
-              <b>{{ c.author || "Anonymous" }}</b>
+              <b>{{ c.author || t("common.anonymous") }}</b>
               <time :datetime="c.createdAt" :title="absolute(c.createdAt)">{{ relative(c.createdAt) }}</time>
-              <span v-if="isEdited(c)" class="edited" :title="`Edited ${absolute(c.updatedAt)}`">edited</span>
+              <span v-if="isEdited(c)" class="edited" :title="t('comments.editedAt', { date: absolute(c.updatedAt) })">
+                {{ t("comments.edited") }}
+              </span>
               <span v-if="!readOnly && editingId !== c.id && confirmDeleteId !== c.id" class="comment-actions">
-                <button type="button" class="link muted" @click="startEdit(c)">Edit</button>
-                <button type="button" class="link danger" @click="confirmDeleteId = c.id">Delete</button>
+                <button type="button" class="link muted" @click="startEdit(c)">{{ t("common.edit") }}</button>
+                <button type="button" class="link danger" @click="confirmDeleteId = c.id">{{ t("common.delete") }}</button>
               </span>
             </div>
 
@@ -255,27 +258,27 @@ onMounted(loadLatest);
                 class="comment-input"
                 rows="3"
                 :maxlength="MAX_LENGTH"
-                aria-label="Edit comment"
+                :aria-label="t('comments.editLabel')"
                 @keydown="onEditKeydown($event, c)"
               />
               <div class="edit-actions">
-                <button type="button" class="link muted" @click="editingId = null">Cancel</button>
+                <button type="button" class="link muted" @click="editingId = null">{{ t("common.cancel") }}</button>
                 <button type="button" class="btn small" :disabled="savingEdit || !editDraft.trim()" @click="saveEdit(c)">
-                  {{ savingEdit ? "Saving…" : "Save" }}
+                  {{ savingEdit ? t("comments.saving") : t("common.save") }}
                 </button>
               </div>
             </div>
             <div v-else class="comment-body markdown-body" v-html="renderMarkdown(c.body)" />
 
             <div v-if="confirmDeleteId === c.id" class="confirm-line">
-              <span>Delete this comment?</span>
-              <button type="button" class="go" @click="remove(c)">Delete</button>
-              <button type="button" class="link muted" @click="confirmDeleteId = null">Cancel</button>
+              <span>{{ t("comments.confirmDelete") }}</span>
+              <button type="button" class="go" @click="remove(c)">{{ t("common.delete") }}</button>
+              <button type="button" class="link muted" @click="confirmDeleteId = null">{{ t("common.cancel") }}</button>
             </div>
           </div>
         </li>
       </ol>
-      <p v-else-if="readOnly" class="muted-line">No comments yet.</p>
+      <p v-else-if="readOnly" class="muted-line">{{ t("comments.empty") }}</p>
 
       <p v-if="actionError" class="error">{{ actionError }}</p>
 
@@ -286,8 +289,8 @@ onMounted(loadLatest);
           class="comment-input"
           rows="2"
           :maxlength="MAX_LENGTH"
-          :placeholder="comments.length ? 'Reply…' : 'Write the first comment…'"
-          aria-label="New comment"
+          :placeholder="comments.length ? t('comments.replyPlaceholder') : t('comments.firstPlaceholder')"
+          :aria-label="t('comments.newLabel')"
           @input="autoGrow(composerEl)"
           @keydown="onComposerKeydown"
         />
@@ -300,23 +303,23 @@ onMounted(loadLatest);
                 class="name-input"
                 type="text"
                 :maxlength="MAX_AUTHOR_LENGTH"
-                placeholder="Your name"
-                aria-label="Your display name"
+                :placeholder="t('comments.namePlaceholder')"
+                :aria-label="t('comments.nameLabel')"
                 @keydown="onNameKeydown"
                 @blur="saveName"
               />
             </template>
             <template v-else>
-              Commenting as
-              <button type="button" class="name-btn" title="Change the name shown on your comments" @click="startName">
-                {{ author || "Anonymous" }}
+              {{ t("comments.commentingAs") }}
+              <button type="button" class="name-btn" :title="t('comments.changeName')" @click="startName">
+                {{ author || t("common.anonymous") }}
               </button>
             </template>
           </span>
           <span class="composer-right">
-            <span class="hint">Markdown · <kbd>Ctrl</kbd> <kbd>↵</kbd></span>
+            <span class="hint">{{ t("comments.markdownHint") }} · <kbd>Ctrl</kbd> <kbd>↵</kbd></span>
             <button type="button" class="btn small" :disabled="posting || !draft.trim()" @click="post">
-              {{ posting ? "Posting…" : "Comment" }}
+              {{ posting ? t("comments.posting") : t("comments.submit") }}
             </button>
           </span>
         </div>

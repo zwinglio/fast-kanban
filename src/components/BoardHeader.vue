@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import BoardSwitcher from "./BoardSwitcher.vue";
 import BoardConfigMenu from "./BoardConfigMenu.vue";
 import ThemeToggle from "./ThemeToggle.vue";
+import LanguageToggle from "./LanguageToggle.vue";
 import BoardIcon from "./BoardIcon.vue";
 
 defineProps<{
@@ -19,9 +21,7 @@ defineProps<{
   view: "board" | "table";
 }>();
 
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
+const { t } = useI18n();
 
 const emit = defineEmits<{
   enterKey: [];
@@ -41,8 +41,8 @@ const emit = defineEmits<{
         v-if="!readOnly"
         type="button"
         class="brand"
-        title="Change board icon"
-        aria-label="Change board icon"
+        :title="t('header.changeIcon')"
+        :aria-label="t('header.changeIcon')"
         @click="emit('openGeneral')"
       >
         <BoardIcon :icon="icon" :title="title" :size="42" />
@@ -53,29 +53,29 @@ const emit = defineEmits<{
       <div class="tb-titles">
         <BoardSwitcher :current-id="boardId" :current-title="title" :current-has-key="!readOnly" :current-icon="icon" />
         <div class="tb-meta">
-          <span class="tb-key" title="Card ID prefix">{{ prefix }}</span>
-          <span>{{ plural(cardCount, "card") }}</span>
+          <span class="tb-key" :title="t('header.cardPrefix')">{{ prefix }}</span>
+          <span>{{ t("header.cardCount", cardCount) }}</span>
           <span class="tb-dot" aria-hidden="true" />
-          <span>{{ plural(columnCount, "column") }}</span>
+          <span>{{ t("header.columnCount", columnCount) }}</span>
           <span class="tb-dot" aria-hidden="true" />
-          <span>{{ plural(tagCount, "tag") }}</span>
+          <span>{{ t("header.tagCount", tagCount) }}</span>
           <template v-if="archivedCount">
             <span class="tb-dot" aria-hidden="true" />
-            <span>{{ archivedCount }} archived</span>
+            <span>{{ t("header.archivedCount", archivedCount) }}</span>
           </template>
-          <span v-if="readOnly" class="tb-ro" title="You can view this board but not change it">
+          <span v-if="readOnly" class="tb-ro" :title="t('header.readOnlyHint')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="5" y="11" width="14" height="10" rx="2" />
               <path d="M8 11V7a4 4 0 0 1 8 0v4" />
             </svg>
-            Read-only
+            {{ t("header.readOnly") }}
           </span>
         </div>
       </div>
     </div>
 
     <div class="tb-right">
-      <div class="tb-view-toggle" role="group" aria-label="Board view">
+      <div class="tb-view-toggle" role="group" :aria-label="t('header.viewGroup')">
         <button
           class="tb-view-button"
           type="button"
@@ -86,7 +86,7 @@ const emit = defineEmits<{
             <rect x="3" y="4" width="8" height="16" rx="1.5" />
             <rect x="13" y="4" width="8" height="10" rx="1.5" />
           </svg>
-          <span>Board</span>
+          <span>{{ t("header.viewBoard") }}</span>
         </button>
         <button
           class="tb-view-button"
@@ -98,7 +98,7 @@ const emit = defineEmits<{
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M3 10h18M9 10v10M16 10v10" />
           </svg>
-          <span>Table</span>
+          <span>{{ t("header.viewTable") }}</span>
         </button>
       </div>
       <span class="tb-divider" aria-hidden="true" />
@@ -107,38 +107,38 @@ const emit = defineEmits<{
         :class="`is-${liveStatus}`"
         :title="
           liveStatus === 'live'
-            ? `Live — changes from others appear automatically. ${viewers} ${viewers === 1 ? 'tab has' : 'tabs have'} this board open.`
+            ? t('header.liveHint', viewers)
             : liveStatus === 'connecting'
-              ? 'Reconnecting… changes will sync when the connection is back.'
-              : 'Offline — reload the page to see the latest changes.'
+              ? t('header.connectingHint')
+              : t('header.offlineHint')
         "
       >
         <span class="live-dot" aria-hidden="true" />
         <template v-if="liveStatus === 'live'">
-          <span class="live-label">Live</span>
+          <span class="live-label">{{ t("header.live") }}</span>
           <span v-if="viewers > 1" class="viewers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
             </svg>
-            {{ viewers }}<span class="sr-only"> viewing</span>
+            {{ viewers }}<span class="sr-only"> {{ t("header.viewing") }}</span>
           </span>
         </template>
-        <span v-else class="live-label">{{ liveStatus === "connecting" ? "Reconnecting…" : "Offline" }}</span>
+        <span v-else class="live-label">{{ liveStatus === "connecting" ? t("header.connecting") : t("header.offline") }}</span>
       </span>
       <span class="tb-divider" aria-hidden="true" />
       <button
         v-if="readOnly"
         class="tb-unlock"
         type="button"
-        title="Enter edit key"
-        aria-label="Enter edit key"
+        :title="t('header.enterEditKey')"
+        :aria-label="t('header.enterEditKey')"
         @click="emit('enterKey')"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="8" cy="15" r="4" />
           <path d="M10.8 12.2L20 3M17 6l3 3M15 8l2 2" />
         </svg>
-        <span>Enter edit key</span>
+        <span>{{ t("header.enterEditKey") }}</span>
       </button>
       <BoardConfigMenu
         v-if="!readOnly"
@@ -148,7 +148,8 @@ const emit = defineEmits<{
         @open-general="emit('openGeneral')"
         @open-agents="emit('openAgents')"
       />
-      <span class="tb-divider" aria-hidden="true" />
+      <span class="tb-divider tb-divider-tools" aria-hidden="true" />
+      <LanguageToggle />
       <ThemeToggle />
     </div>
   </header>
@@ -406,7 +407,13 @@ button.brand:focus-visible {
     gap: 10px;
   }
   .tb-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
     padding-top: 1px;
+  }
+  .tb-divider-tools {
+    display: none;
   }
   .tb-unlock span,
   .tb-view-button span {

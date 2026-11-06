@@ -1,14 +1,21 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import ThemeToggle from "../components/ThemeToggle.vue";
+import LanguageToggle from "../components/LanguageToggle.vue";
+
+const { t } = useI18n();
 </script>
 
 <template>
   <div class="not-found">
-    <ThemeToggle class="theme-toggle-corner" />
+    <div class="corner-actions">
+      <LanguageToggle />
+      <ThemeToggle />
+    </div>
     <div class="card">
-      <h1>404 — Page not found</h1>
-      <p class="subtitle">The page you're looking for doesn't exist or has been moved.</p>
-      <router-link class="btn" :to="{ name: 'home' }">Back to home</router-link>
+      <h1>{{ t("notFound.title") }}</h1>
+      <p class="subtitle">{{ t("notFound.subtitle") }}</p>
+      <router-link class="btn" :to="{ name: 'home' }">{{ t("notFound.backHome") }}</router-link>
     </div>
   </div>
 </template>
@@ -23,10 +30,13 @@ import ThemeToggle from "../components/ThemeToggle.vue";
   position: relative;
 }
 
-.theme-toggle-corner {
+.corner-actions {
   position: absolute;
   top: 16px;
   right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .card {

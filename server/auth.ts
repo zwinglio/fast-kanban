@@ -1,6 +1,7 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import type { Context, Next } from "hono";
 import { prisma } from "./db.js";
+import { fail } from "./errors.js";
 
 const KEY_LEN = 64;
 
@@ -46,15 +47,15 @@ export async function requireEditKey(c: Context, next: Next) {
   const boardId = c.req.param("id");
   const key = c.req.header("X-Edit-Key");
   if (!boardId || !key) {
-    return c.json({ error: "Missing edit key" }, 401);
+    return fail(c, 401, "MISSING_EDIT_KEY", "Missing edit key");
   }
   const board = await prisma.board.findUnique({ where: { id: boardId } });
   if (!board) {
-    return c.json({ error: "Board not found" }, 404);
+    return fail(c, 404, "BOARD_NOT_FOUND", "Board not found");
   }
   const ok = await verifyEditKey(key, board.editHash);
   if (!ok) {
-    return c.json({ error: "Invalid edit key" }, 401);
+    return fail(c, 401, "INVALID_EDIT_KEY", "Invalid edit key");
   }
   c.set("board", board);
   await next();

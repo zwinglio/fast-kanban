@@ -1,15 +1,27 @@
+import type { BoardLocale } from "./locale.js";
+
 export interface DefaultColumn {
   name: string;
   color: string;
   position: number;
 }
 
-export const DEFAULT_COLUMNS: DefaultColumn[] = [
-  { name: "Backlog", color: "#5e6c84", position: 0 },
-  { name: "Todo", color: "#4c9aff", position: 1 },
-  { name: "Doing", color: "#0052cc", position: 2 },
-  { name: "Done", color: "#36b37e", position: 3 },
-];
+// Colors and positions are identical in every locale; only the names are translated.
+const COLUMN_COLORS: string[] = ["#5e6c84", "#4c9aff", "#0052cc", "#36b37e"];
+
+const COLUMN_NAMES: Record<BoardLocale, string[]> = {
+  en: ["Backlog", "Todo", "Doing", "Done"],
+  "pt-BR": ["Backlog", "A fazer", "Em andamento", "Concluído"],
+};
+
+/** Columns a new board is seeded with, named in the board's creation locale. */
+export function defaultColumns(locale: BoardLocale): DefaultColumn[] {
+  return COLUMN_NAMES[locale].map((name, position) => ({
+    name,
+    color: COLUMN_COLORS[position],
+    position,
+  }));
+}
 
 export const MAX_COLUMNS = 8;
 

@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { getEditKey } from "../lib/editKey";
 import ModalShell from "./ModalShell.vue";
 
 const props = defineProps<{ boardId: string }>();
 const emit = defineEmits<{ close: [] }>();
 
+const { t } = useI18n();
+
 const token = ref(getEditKey(props.boardId));
 const showToken = ref(false);
-const copied = ref<Record<string, string>>({});
+// Copy-button feedback, reset after a moment; rendered in the active locale.
+const copied = ref<Record<string, "copied" | "unavailable">>({});
 const origin = window.location.origin;
 const restUrl = `${origin}/api/agent/boards/${props.boardId}`;
 const mcpUrl = `${origin}/api/mcp/${props.boardId}`;
@@ -29,82 +33,91 @@ const snippets = computed(() => {
     `FAST_KANBAN_URL=${origin}`,
     `FAST_KANBAN_BOARD_ID=${props.boardId}`,
     `FAST_KANBAN_TOKEN=${value}`,
-    "FAST_KANBAN_AUTHOR=Your Name # optional",
+    `FAST_KANBAN_AUTHOR=${t("settings.agents.authorExample")} # ${t("common.optional")}`,
     "node dist-mcp/fast-kanban-mcp.js",
   ].join("\n");
   const curl = (value: string) => `curl -H "Authorization: Bearer ${value}" "${restUrl}/cards"`;
   const claude = (value: string) => `claude mcp add --transport http fast-kanban ${mcpUrl} --header "Authorization: Bearer ${value}"`;
   return [
-    { id: "claude", title: "Claude Code · remote", display: claude(visibleToken), copy: claude(actualToken) },
-    { id: "json", title: "Generic MCP configuration · remote", display: config(visibleToken), copy: config(actualToken) },
-    { id: "stdio", title: "Local stdio server", display: stdio(visibleToken), copy: stdio(actualToken) },
-    { id: "curl", title: "REST API · list cards", display: curl(visibleToken), copy: curl(actualToken) },
+    { id: "claude", titleKey: "settings.agents.snippetClaude", display: claude(visibleToken), copy: claude(actualToken) },
+    { id: "json", titleKey: "settings.agents.snippetJson", display: config(visibleToken), copy: config(actualToken) },
+    { id: "stdio", titleKey: "settings.agents.snippetStdio", display: stdio(visibleToken), copy: stdio(actualToken) },
+    { id: "curl", titleKey: "settings.agents.snippetCurl", display: curl(visibleToken), copy: curl(actualToken) },
   ];
 });
+
+/** Localised label for a copy button, showing the last action's feedback. */
+function copyLabel(id: string): string {
+  const state = copied.value[id];
+  if (!state) return t("common.copy");
+  return state === "copied" ? t("common.copied") : t("settings.agents.unavailable");
+}
 
 async function copy(id: string, value: string) {
   try {
     await navigator.clipboard.writeText(value);
-    copied.value[id] = "Copied";
+    copied.value[id] = "copied";
   } catch {
-    copied.value[id] = "Unavailable";
+    copied.value[id] = "unavailable";
   }
   setTimeout(() => {
-    copied.value[id] = "Copy";
+    delete copied.value[id];
   }, 1500);
 }
 </script>
 
 <template>
   <ModalShell
-    title="Agents & API"
-    subtitle="Connect tools and agents to this board."
+    :title="t('settings.agents.title')"
+    :subtitle="t('settings.agents.subtitle')"
     :width="720"
     @close="emit('close')"
   >
     <section class="sheet-section">
-      <div class="sheet-section-head"><span class="sheet-label">Board access</span></div>
+      <div class="sheet-section-head"><span class="sheet-label">{{ t("settings.agents.boardAccess") }}</span></div>
       <div class="access-row">
-        <span class="access-label">Board ID</span>
+        <span class="access-label">{{ t("settings.agents.boardId") }}</span>
         <code>{{ boardId }}</code>
-        <button class="btn secondary" type="button" @click="copy('board', boardId)">{{ copied.board ?? "Copy" }}</button>
+        <button class="btn secondary" type="button" @click="copy('board', boardId)">{{ copyLabel("board") }}</button>
       </div>
       <div class="access-row">
-        <span class="access-label">Token</span>
+        <span class="access-label">{{ t("settings.agents.token") }}</span>
         <template v-if="token">
           <code class="token-value">{{ showToken ? token : "••••••••••••" }}</code>
-          <button class="btn secondary" type="button" @click="showToken = !showToken">{{ showToken ? "Hide" : "Show" }}</button>
-          <button class="btn secondary" type="button" @click="copy('token', token)">{{ copied.token ?? "Copy" }}</button>
+          <button class="btn secondary" type="button" @click="showToken = !showToken">{{ showToken ? t("common.hide") : t("common.show") }}</button>
+          <button class="btn secondary" type="button" @click="copy('token', token)">{{ copyLabel("token") }}</button>
         </template>
-        <span v-else class="access-note">This browser has no saved edit key. Enter the key on the board to enable agent access.</span>
+        <span v-else class="access-note">{{ t("settings.agents.noToken") }}</span>
       </div>
       <div class="access-row">
-        <span class="access-label">REST base</span>
+        <span class="access-label">{{ t("settings.agents.restBase") }}</span>
         <code>{{ restUrl }}</code>
-        <button class="btn secondary" type="button" @click="copy('rest', restUrl)">{{ copied.rest ?? "Copy" }}</button>
+        <button class="btn secondary" type="button" @click="copy('rest', restUrl)">{{ copyLabel("rest") }}</button>
       </div>
       <div class="access-row">
-        <span class="access-label">MCP URL</span>
+        <span class="access-label">{{ t("settings.agents.mcpUrl") }}</span>
         <code>{{ mcpUrl }}</code>
-        <button class="btn secondary" type="button" @click="copy('mcp', mcpUrl)">{{ copied.mcp ?? "Copy" }}</button>
+        <button class="btn secondary" type="button" @click="copy('mcp', mcpUrl)">{{ copyLabel("mcp") }}</button>
       </div>
-      <p class="access-warning" role="note">This token grants full edit access to the board. Keep it private and only share it with trusted agents.</p>
+      <p class="access-warning" role="note">{{ t("settings.agents.tokenWarning") }}</p>
     </section>
 
     <section class="sheet-section">
-      <div class="sheet-section-head"><span class="sheet-label">Examples</span></div>
+      <div class="sheet-section-head"><span class="sheet-label">{{ t("settings.agents.examples") }}</span></div>
       <div v-for="snippet in snippets" :key="snippet.id" class="agent-snippet">
         <div class="snippet-head">
-          <span>{{ snippet.title }}</span>
-          <button class="btn secondary" type="button" @click="copy(snippet.id, snippet.copy)">{{ copied[snippet.id] ?? "Copy" }}</button>
+          <span>{{ t(snippet.titleKey) }}</span>
+          <button class="btn secondary" type="button" @click="copy(snippet.id, snippet.copy)">{{ copyLabel(snippet.id) }}</button>
         </div>
         <pre><code>{{ snippet.display }}</code></pre>
       </div>
-      <p class="sheet-note">Card keys look like PREFIX-123. Call <code>get_board</code> to see valid column, priority, and tag names.</p>
+      <i18n-t keypath="settings.agents.cardKeyNote" tag="p" class="sheet-note">
+        <template #tool><code>get_board</code></template>
+      </i18n-t>
     </section>
 
     <template #footer>
-      <button class="btn" type="button" @click="emit('close')">Done</button>
+      <button class="btn" type="button" @click="emit('close')">{{ t("common.done") }}</button>
     </template>
   </ModalShell>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { forgetBoard, getRecentBoards, type RecentBoard } from "../lib/recentBoards";
 import BoardIcon from "./BoardIcon.vue";
 
@@ -11,6 +12,7 @@ const props = defineProps<{
   currentIcon: string | null;
 }>();
 
+const { t } = useI18n();
 const router = useRouter();
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
@@ -75,7 +77,7 @@ onUnmounted(() => {
       <button
         class="title-trigger"
         type="button"
-        title="Switch board"
+        :title="t('header.switchBoard')"
         aria-haspopup="menu"
         :aria-expanded="open"
         @click="toggle"
@@ -88,13 +90,13 @@ onUnmounted(() => {
     </h1>
 
     <div v-if="open" class="panel" role="menu">
-      <div class="panel-head">Recent boards</div>
+      <div class="panel-head">{{ t("header.recentBoards") }}</div>
       <ul class="panel-list">
         <li class="row current">
           <div class="row-main" aria-current="page">
             <BoardIcon :icon="currentIcon" :title="currentTitle" :size="24" />
             <span class="row-title">{{ currentTitle }}</span>
-            <span v-if="!currentHasKey" class="ro-badge">Read-only</span>
+            <span v-if="!currentHasKey" class="ro-badge">{{ t("header.readOnly") }}</span>
             <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
@@ -103,14 +105,14 @@ onUnmounted(() => {
         <li v-for="b in entries.slice(1)" :key="b.id" class="row">
           <button class="row-main" type="button" role="menuitem" @click="goTo(b.id)">
             <BoardIcon :icon="b.icon" :title="b.title" :size="24" muted />
-            <span class="row-title">{{ b.title || "Untitled board" }}</span>
-            <span v-if="!b.hasKey" class="ro-badge">Read-only</span>
+            <span class="row-title">{{ b.title || t("header.untitledBoard") }}</span>
+            <span v-if="!b.hasKey" class="ro-badge">{{ t("header.readOnly") }}</span>
           </button>
           <button
             class="row-remove"
             type="button"
-            title="Remove from list"
-            :aria-label="`Remove ${b.title} from recent boards`"
+            :title="t('header.removeFromList')"
+            :aria-label="t('header.removeBoard', { title: b.title || t('header.untitledBoard') })"
             @click.stop="remove(b.id)"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
@@ -119,12 +121,12 @@ onUnmounted(() => {
           </button>
         </li>
       </ul>
-      <p v-if="entries.length === 1" class="panel-empty">No other boards yet.</p>
+      <p v-if="entries.length === 1" class="panel-empty">{{ t("header.noOtherBoards") }}</p>
       <router-link to="/" class="panel-foot" @click="open = false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M12 5v14M5 12h14" />
         </svg>
-        New board
+        {{ t("header.newBoard") }}
       </router-link>
     </div>
   </div>

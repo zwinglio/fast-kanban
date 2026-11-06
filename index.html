@@ -19,6 +19,20 @@
               ? "dark"
               : "light";
         document.documentElement.setAttribute("data-theme", theme);
+
+        // Same rule as src/lib/locale.ts: Portuguese browsers get pt-BR, the rest en.
+        var locale = "en";
+        try {
+          var storedLocale = localStorage.getItem("fk_locale");
+          if (storedLocale === "en" || storedLocale === "pt-BR") {
+            locale = storedLocale;
+          } else if ((navigator.language || "").toLowerCase().indexOf("pt") === 0) {
+            locale = "pt-BR";
+          }
+        } catch (e) {
+          locale = (navigator.language || "").toLowerCase().indexOf("pt") === 0 ? "pt-BR" : "en";
+        }
+        document.documentElement.setAttribute("lang", locale);
       })();
     </script>
   </head>

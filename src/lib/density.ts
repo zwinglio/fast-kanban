@@ -1,9 +1,16 @@
 export type Density = "compact" | "default" | "comfortable";
 
-export const DENSITIES: { value: Density; label: string; hint: string }[] = [
-  { value: "compact", label: "Compact", hint: "ID and title only" },
-  { value: "default", label: "Default", hint: "Title and tags" },
-  { value: "comfortable", label: "Comfortable", hint: "Adds a description preview" },
+export interface DensityOption {
+  value: Density;
+  labelKey: string;
+  hintKey: string;
+}
+
+// Labels are i18n keys so they follow the active locale; render with t(opt.labelKey).
+export const DENSITIES: DensityOption[] = [
+  { value: "compact", labelKey: "settings.general.density.compact", hintKey: "settings.general.density.compactHint" },
+  { value: "default", labelKey: "settings.general.density.default", hintKey: "settings.general.density.defaultHint" },
+  { value: "comfortable", labelKey: "settings.general.density.comfortable", hintKey: "settings.general.density.comfortableHint" },
 ];
 
 const STORAGE_PREFIX = "fk_density:";

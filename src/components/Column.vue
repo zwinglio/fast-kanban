@@ -4,6 +4,9 @@ import type { Card as CardType, Priority } from "../api";
 import type { Density } from "../lib/density";
 import CardTile from "./Card.vue";
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t, n } = useI18n();
 
 const props = defineProps<{
   title: string;
@@ -35,16 +38,16 @@ const emit = defineEmits<{
     <header class="column-header">
       <span class="dot" aria-hidden="true" />
       <span class="title">{{ title }}</span>
-      <span v-if="pointsEnabled && totalPoints" class="points-total" :title="`${totalPoints} story points in this column`">
-        {{ totalPoints }} pts
+      <span v-if="pointsEnabled && totalPoints" class="points-total" :title="t('board.column.pointsTitle', totalPoints)">
+        {{ t("board.column.pointsShort", { n: n(totalPoints, "integer") }) }}
       </span>
-      <span class="count">{{ cards.length }}</span>
+      <span class="count">{{ n(cards.length, "integer") }}</span>
       <button
         v-if="!readOnly"
         class="head-add"
         type="button"
-        :title="`Add card to ${title}`"
-        :aria-label="`Add card to ${title}`"
+        :title="t('board.column.addCardTo', { name: title })"
+        :aria-label="t('board.column.addCardTo', { name: title })"
         @click="emit('addCard')"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -58,6 +61,7 @@ const emit = defineEmits<{
       :group="{ name: 'cards', pull: true, put: true }"
       item-key="id"
       class="column-body"
+      :data-empty="t('board.column.noCards')"
       :disabled="readOnly || disableDrag"
       :animation="150"
       ghost-class="ghost-card"
@@ -74,7 +78,7 @@ const emit = defineEmits<{
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 5v14M5 12h14" />
       </svg>
-      Add card
+      {{ t("board.column.addCard") }}
     </button>
   </section>
 </template>
@@ -182,7 +186,7 @@ const emit = defineEmits<{
 
 /* nothing to show: a quiet drop target instead of blank space */
 .column-body:empty::after {
-  content: "No cards";
+  content: attr(data-empty);
   display: grid;
   place-items: center;
   min-height: 56px;

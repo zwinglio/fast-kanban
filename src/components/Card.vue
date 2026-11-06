@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { Card, Priority } from "../api";
 import PriorityIcon from "./PriorityIcon.vue";
 import type { Density } from "../lib/density";
+
+const { t, d, n } = useI18n();
 
 const props = defineProps<{
   card: Card;
@@ -34,12 +37,12 @@ const excerpt = computed(() => {
 });
 
 const updatedLabel = computed(() => {
-  const d = new Date(props.card.updatedAt);
-  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
-  if (days < 1) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const updated = new Date(props.card.updatedAt);
+  const days = Math.floor((Date.now() - updated.getTime()) / 86_400_000);
+  if (days < 1) return t("card.updatedToday");
+  if (days === 1) return t("card.updatedYesterday");
+  if (days < 7) return t("card.updatedDaysAgo", days);
+  return d(updated, "short");
 });
 </script>
 
@@ -58,21 +61,21 @@ const updatedLabel = computed(() => {
         <span
           v-if="openBlockers.length"
           class="blocked-chip"
-          :title="`Blocked by ${openBlockers.join(', ')}`"
+          :title="t('card.blockedBy', { ids: openBlockers.join(', ') })"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" />
           </svg>
-          <span v-if="density !== 'compact'">Blocked<template v-if="openBlockers.length > 1"> · {{ openBlockers.length }}</template></span>
+          <span v-if="density !== 'compact'">{{ t("card.blocked") }}<template v-if="openBlockers.length > 1"> · {{ n(openBlockers.length, "integer") }}</template></span>
         </span>
-        <span v-if="card.archivedAt" class="archived-chip" title="Archived">
+        <span v-if="card.archivedAt" class="archived-chip" :title="t('card.archived')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="5" rx="1.5" />
             <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
           </svg>
-          <span v-if="density !== 'compact'">Archived</span>
+          <span v-if="density !== 'compact'">{{ t("card.archived") }}</span>
         </span>
-        <span v-if="hasBody && density !== 'comfortable'" class="has-body" title="Has description" aria-label="Has description">
+        <span v-if="hasBody && density !== 'comfortable'" class="has-body" :title="t('card.hasDescription')" :aria-label="t('card.hasDescription')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 6h16M4 12h16M4 18h10" />
           </svg>
@@ -80,24 +83,24 @@ const updatedLabel = computed(() => {
         <span
           v-if="card.commentCount"
           class="comment-count"
-          :title="`${card.commentCount} ${card.commentCount === 1 ? 'comment' : 'comments'}`"
+          :title="t('card.commentCount', card.commentCount)"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z" />
           </svg>
-          {{ card.commentCount }}
+          {{ n(card.commentCount, "integer") }}
         </span>
         <span
           v-if="pointsEnabled && card.points !== null"
           class="card-points"
-          :title="`${card.points} story ${card.points === 1 ? 'point' : 'points'}`"
-        >{{ card.points }}</span>
+          :title="t('card.storyPoints', card.points)"
+        >{{ n(card.points, "integer") }}</span>
         <span
           v-if="priority"
           class="card-priority"
           :class="{ 'icon-only': density === 'compact' }"
           :style="{ '--p': priority.color }"
-          :title="`Priority: ${priority.name}`"
+          :title="t('card.priorityTitle', { name: priority.name })"
         >
           <PriorityIcon :color="priority.color" :size="12" />
           <span v-if="density !== 'compact'">{{ priority.name }}</span>
@@ -114,7 +117,7 @@ const updatedLabel = computed(() => {
     </div>
 
     <div v-if="density === 'comfortable'" class="card-foot">
-      <span>Updated {{ updatedLabel }}</span>
+      <span>{{ t("card.updated", { when: updatedLabel }) }}</span>
     </div>
   </div>
 </template>

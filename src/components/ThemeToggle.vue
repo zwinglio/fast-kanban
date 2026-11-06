@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { getTheme, setTheme } from "../lib/theme";
 
+const { t } = useI18n();
 const theme = ref(getTheme());
 
 function toggle() {
@@ -15,8 +17,8 @@ function toggle() {
   <button
     class="icon-btn"
     type="button"
-    :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-    :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+    :aria-label="theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')"
+    :title="theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')"
     @click="toggle"
   >
     <svg v-if="theme === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">

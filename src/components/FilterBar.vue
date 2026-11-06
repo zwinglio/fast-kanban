@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import type { Column, Priority, Tag } from "../api";
 import PriorityIcon from "./PriorityIcon.vue";
 import type { ArchiveView } from "../lib/archive";
@@ -32,6 +33,9 @@ const emit = defineEmits<{
 }>();
 
 type Menu = "tags" | "priorities" | "columns" | "archive";
+
+const { t, n } = useI18n();
+
 const openMenu = ref<Menu | null>(null);
 const tagQuery = ref("");
 const root = ref<HTMLElement | null>(null);
@@ -48,9 +52,12 @@ const columnsActive = computed(() => props.columnIds.size < props.columns.length
 
 // Short, fixed-width summary so the bar never grows with the number of tags.
 const tagSummary = computed(() => {
-  const names = selectedTags.value.map((t) => t.name);
+  const names = selectedTags.value.map((tag) => tag.name);
   if (names.length <= 2) return names.join(", ");
-  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  return t("filters.moreSummary", {
+    names: names.slice(0, 2).join(", "),
+    n: n(names.length - 2, "integer"),
+  });
 });
 const prioritiesActive = computed(() => props.priorityIds.size > 0);
 const noPriorityCount = computed(() => {
@@ -59,21 +66,30 @@ const noPriorityCount = computed(() => {
 });
 const prioritySummary = computed(() => {
   const names = props.priorities.filter((p) => props.priorityIds.has(p.id)).map((p) => p.name);
-  if (props.priorityIds.has(props.noPriorityId)) names.push("None");
+  if (props.priorityIds.has(props.noPriorityId)) names.push(t("filters.noPriority"));
   if (names.length <= 2) return names.join(", ");
-  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  return t("filters.moreSummary", {
+    names: names.slice(0, 2).join(", "),
+    n: n(names.length - 2, "integer"),
+  });
 });
-const ARCHIVE_OPTIONS: { value: ArchiveView; label: string; hint: string }[] = [
-  { value: "active", label: "Active cards", hint: "Hide archived cards" },
-  { value: "archived", label: "Archived only", hint: "Review what was put away" },
-  { value: "all", label: "All cards", hint: "Active and archived together" },
+// Labels live as message keys so the bar follows a live language switch.
+const ARCHIVE_OPTIONS: { value: ArchiveView; labelKey: string; hintKey: string }[] = [
+  { value: "active", labelKey: "filters.archive.active", hintKey: "filters.archive.activeHint" },
+  { value: "archived", labelKey: "filters.archive.archived", hintKey: "filters.archive.archivedHint" },
+  { value: "all", labelKey: "filters.archive.all", hintKey: "filters.archive.allHint" },
 ];
 const archiveActive = computed(() => props.archiveView !== "active");
-const archiveSummary = computed(() => (props.archiveView === "archived" ? "Only archived" : "Included"));
-const countNoun = computed(() => {
-  if (props.archiveView === "archived") return props.totalCount === 1 ? "archived card" : "archived cards";
-  return props.totalCount === 1 ? "card" : "cards";
-});
+const archiveSummary = computed(() =>
+  props.archiveView === "archived"
+    ? t("filters.archiveSummaryOnlyArchived")
+    : t("filters.archiveSummaryIncluded")
+);
+const countLabel = computed(() =>
+  props.archiveView === "archived"
+    ? t("filters.archivedCardCount", props.totalCount)
+    : t("filters.cardCount", props.totalCount)
+);
 
 function archiveOptionCount(view: ArchiveView) {
   if (view === "active") return props.activeCount;
@@ -86,7 +102,12 @@ function setArchiveView(view: ArchiveView) {
   openMenu.value = null;
 }
 
-const columnSummary = computed(() => `${props.columnIds.size} of ${props.columns.length}`);
+const columnSummary = computed(() =>
+  t("filters.columnSummary", {
+    shown: n(props.columnIds.size, "integer"),
+    total: n(props.columns.length, "integer"),
+  })
+);
 
 function toggleMenu(menu: Menu) {
   openMenu.value = openMenu.value === menu ? null : menu;
@@ -216,7 +237,7 @@ onBeforeUnmount(() => {
             :aria-expanded="openMenu === 'tags'"
             @click="toggleMenu('tags')"
           >
-            <span class="trigger-label">Tags</span>
+            <span class="trigger-label">{{ t("filters.tags") }}</span>
             <template v-if="tagsActive">
               <span class="trigger-sep" aria-hidden="true" />
               <span class="trigger-value">{{ tagSummary }}</span>
@@ -225,7 +246,7 @@ onBeforeUnmount(() => {
               <path d="M6 9l6 6 6-6" />
             </svg>
           </button>
-          <button v-if="tagsActive" type="button" class="trigger-clear" aria-label="Clear tag filter" @click="clearTags">
+          <button v-if="tagsActive" type="button" class="trigger-clear" :aria-label="t('filters.clearTagFilter')" @click="clearTags">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -238,8 +259,8 @@ onBeforeUnmount(() => {
               ref="tagSearchEl"
               v-model="tagQuery"
               type="text"
-              placeholder="Search tags…"
-              aria-label="Search tags"
+              :placeholder="t('filters.searchTagsPlaceholder')"
+              :aria-label="t('filters.searchTagsLabel')"
               @keydown.enter.prevent="onTagSearchEnter"
             />
           </div>
@@ -260,11 +281,11 @@ onBeforeUnmount(() => {
                 <span class="opt-name">{{ tag.name }}</span>
               </button>
             </li>
-            <li v-if="!visibleTags.length" class="menu-empty">No tags match “{{ tagQuery }}”.</li>
+            <li v-if="!visibleTags.length" class="menu-empty">{{ t("filters.noTagsMatch", { query: tagQuery }) }}</li>
           </ul>
           <div class="menu-foot">
-            <span>Cards with any selected tag</span>
-            <button type="button" :disabled="!tagsActive" @click="clearTags">Clear</button>
+            <span>{{ t("filters.tagsHint") }}</span>
+            <button type="button" :disabled="!tagsActive" @click="clearTags">{{ t("common.clear") }}</button>
           </div>
         </div>
       </div>
@@ -279,7 +300,7 @@ onBeforeUnmount(() => {
             :aria-expanded="openMenu === 'priorities'"
             @click="toggleMenu('priorities')"
           >
-            <span class="trigger-label">Priority</span>
+            <span class="trigger-label">{{ t("filters.priority") }}</span>
             <template v-if="prioritiesActive">
               <span class="trigger-sep" aria-hidden="true" />
               <span class="trigger-value">{{ prioritySummary }}</span>
@@ -292,7 +313,7 @@ onBeforeUnmount(() => {
             v-if="prioritiesActive"
             type="button"
             class="trigger-clear"
-            aria-label="Clear priority filter"
+            :aria-label="t('filters.clearPriorityFilter')"
             @click="clearPriorities"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
@@ -318,7 +339,7 @@ onBeforeUnmount(() => {
                 </span>
                 <PriorityIcon :color="p.color" :size="13" />
                 <span class="opt-name">{{ p.name }}</span>
-                <span class="opt-count">{{ priorityCounts[p.id] ?? 0 }}</span>
+                <span class="opt-count">{{ n(priorityCounts[p.id] ?? 0, "integer") }}</span>
               </button>
             </li>
             <li>
@@ -335,14 +356,14 @@ onBeforeUnmount(() => {
                   </svg>
                 </span>
                 <PriorityIcon :size="13" />
-                <span class="opt-name muted">No priority</span>
-                <span class="opt-count">{{ noPriorityCount }}</span>
+                <span class="opt-name muted">{{ t("filters.noPriority") }}</span>
+                <span class="opt-count">{{ n(noPriorityCount, "integer") }}</span>
               </button>
             </li>
           </ul>
           <div class="menu-foot">
-            <span>Cards with any selected priority</span>
-            <button type="button" :disabled="!prioritiesActive" @click="clearPriorities">Clear</button>
+            <span>{{ t("filters.prioritiesHint") }}</span>
+            <button type="button" :disabled="!prioritiesActive" @click="clearPriorities">{{ t("common.clear") }}</button>
           </div>
         </div>
       </div>
@@ -357,7 +378,7 @@ onBeforeUnmount(() => {
             :aria-expanded="openMenu === 'columns'"
             @click="toggleMenu('columns')"
           >
-            <span class="trigger-label">Columns</span>
+            <span class="trigger-label">{{ t("filters.columns") }}</span>
             <template v-if="columnsActive">
               <span class="trigger-sep" aria-hidden="true" />
               <span class="trigger-value">{{ columnSummary }}</span>
@@ -370,7 +391,7 @@ onBeforeUnmount(() => {
             v-if="columnsActive"
             type="button"
             class="trigger-clear"
-            aria-label="Show all columns"
+            :aria-label="t('filters.showAllColumns')"
             @click="showAllColumns"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
@@ -396,16 +417,16 @@ onBeforeUnmount(() => {
                 </span>
                 <span class="dot" :style="{ background: col.color }" />
                 <span class="opt-name">{{ col.name }}</span>
-                <span class="opt-count">{{ cardCounts[col.id] ?? 0 }}</span>
+                <span class="opt-count">{{ n(cardCounts[col.id] ?? 0, "integer") }}</span>
               </button>
-              <button type="button" class="only-btn" :title="`Show only ${col.name}`" @click="onlyColumn(col.id)">
-                Only
+              <button type="button" class="only-btn" :title="t('filters.showOnly', { name: col.name })" @click="onlyColumn(col.id)">
+                {{ t("filters.only") }}
               </button>
             </li>
           </ul>
           <div class="menu-foot">
-            <span>Unchecked columns are hidden</span>
-            <button type="button" :disabled="!columnsActive" @click="showAllColumns">Show all</button>
+            <span>{{ t("filters.columnsHint") }}</span>
+            <button type="button" :disabled="!columnsActive" @click="showAllColumns">{{ t("filters.showAll") }}</button>
           </div>
         </div>
       </div>
@@ -424,18 +445,18 @@ onBeforeUnmount(() => {
               <rect x="3" y="4" width="18" height="5" rx="1.5" />
               <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
             </svg>
-            <span class="trigger-label">Archived</span>
+            <span class="trigger-label">{{ t("filters.archived") }}</span>
             <template v-if="archiveActive">
               <span class="trigger-sep" aria-hidden="true" />
               <span class="trigger-value">{{ archiveSummary }}</span>
             </template>
-            <span v-else-if="archivedCount" class="trigger-count">{{ archivedCount }}</span>
+            <span v-else-if="archivedCount" class="trigger-count">{{ n(archivedCount, "integer") }}</span>
           </button>
           <button
             v-if="archiveActive"
             type="button"
             class="trigger-clear"
-            aria-label="Hide archived cards"
+            :aria-label="t('filters.hideArchived')"
             @click="setArchiveView('active')"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
@@ -456,15 +477,15 @@ onBeforeUnmount(() => {
               >
                 <span class="radio" aria-hidden="true" />
                 <span class="opt-text">
-                  <span class="opt-name">{{ opt.label }}</span>
-                  <span class="opt-hint">{{ opt.hint }}</span>
+                  <span class="opt-name">{{ t(opt.labelKey) }}</span>
+                  <span class="opt-hint">{{ t(opt.hintKey) }}</span>
                 </span>
-                <span class="opt-count">{{ archiveOptionCount(opt.value) }}</span>
+                <span class="opt-count">{{ n(archiveOptionCount(opt.value), "integer") }}</span>
               </button>
             </li>
           </ul>
           <div class="menu-foot">
-            <span>Archive cards from the card view</span>
+            <span>{{ t("filters.archiveHint") }}</span>
           </div>
         </div>
       </div>
@@ -473,12 +494,12 @@ onBeforeUnmount(() => {
     <div class="filter-right">
       <span
         class="filter-count"
-        :title="filterActive ? 'Drag and drop is paused while filters are on' : undefined"
+        :title="filterActive ? t('filters.dragPausedHint') : undefined"
       >
-        <template v-if="filterActive"><b>{{ shownCount }}</b> of {{ totalCount }} {{ countNoun }}</template>
-        <template v-else>{{ totalCount }} {{ countNoun }}</template>
+        <template v-if="filterActive"><b>{{ n(shownCount, "integer") }}</b> {{ t("filters.ofCount", { total: countLabel }) }}</template>
+        <template v-else>{{ countLabel }}</template>
       </span>
-      <button v-if="filterActive" type="button" class="clear-all" @click="clearAll">Clear filters</button>
+      <button v-if="filterActive" type="button" class="clear-all" @click="clearAll">{{ t("filters.clearFilters") }}</button>
       <div class="search" :class="{ filled: !!query }">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -488,14 +509,14 @@ onBeforeUnmount(() => {
           ref="searchEl"
           :value="query"
           type="search"
-          placeholder="Search cards or #number…"
-          aria-label="Search cards"
+          :placeholder="t('filters.searchPlaceholder')"
+          :aria-label="t('filters.searchLabel')"
           autocomplete="off"
           spellcheck="false"
           @input="onSearchInput"
           @keydown.esc="onSearchEscape"
         />
-        <button v-if="query" type="button" class="search-clear" aria-label="Clear search" @click="clearSearch">
+        <button v-if="query" type="button" class="search-clear" :aria-label="t('filters.clearSearch')" @click="clearSearch">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>

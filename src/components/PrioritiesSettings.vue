@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import draggable from "vuedraggable";
-import { createPriority, updatePriority, deletePriority, ApiError, type Priority } from "../api";
+import { createPriority, updatePriority, deletePriority, ApiError, apiErrorMessage, type Priority } from "../api";
 import { PALETTE } from "../lib/palette";
 import ModalShell from "./ModalShell.vue";
 import PriorityIcon from "./PriorityIcon.vue";
 
 const MAX_PRIORITIES = 6;
 const NEW_PRIORITY = -1; // swatch popover id for the "add priority" row
+
+const { t } = useI18n();
+
+/** Localised message for a failed API call, with a translated fallback. */
+function errorText(e: unknown, fallbackKey: string): string {
+  return e instanceof ApiError ? apiErrorMessage(e) : t(fallbackKey);
+}
 
 const props = defineProps<{
   boardId: string;
@@ -46,7 +54,7 @@ async function saveName(p: Priority) {
     return;
   }
   if (!name || name.length > 30) {
-    error.value = "Priority name must be 1-30 chars";
+    error.value = t("settings.priorities.nameLength");
     return;
   }
   error.value = "";
@@ -56,7 +64,7 @@ async function saveName(p: Priority) {
     Object.assign(p, updated);
     emit("changed");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to rename priority";
+    error.value = errorText(e, "settings.priorities.renameFailed");
   } finally {
     savingId.value = null;
   }
@@ -77,7 +85,7 @@ async function saveColor(p: Priority) {
     showSwatchFor.value = null;
     emit("changed");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to update color";
+    error.value = errorText(e, "settings.priorities.colorFailed");
   } finally {
     savingId.value = null;
   }
@@ -92,7 +100,7 @@ async function onDragEnd() {
       try {
         await updatePriority(props.boardId, p.id, { position: i });
       } catch (e) {
-        error.value = e instanceof ApiError ? e.message : "Failed to reorder priorities";
+        error.value = errorText(e, "settings.priorities.reorderFailed");
       }
     }
   }
@@ -108,7 +116,7 @@ async function removePriority(p: Priority) {
     confirmDeleteId.value = null;
     emit("changed");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to delete priority";
+    error.value = errorText(e, "settings.priorities.deleteFailed");
   } finally {
     deletingId.value = null;
   }
@@ -117,15 +125,15 @@ async function removePriority(p: Priority) {
 async function addPriority() {
   const name = newName.value.trim();
   if (!name || name.length > 30) {
-    error.value = "Priority name must be 1-30 chars";
+    error.value = t("settings.priorities.nameLength");
     return;
   }
   if (localPriorities.value.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
-    error.value = "A priority with this name already exists";
+    error.value = t("settings.priorities.duplicate");
     return;
   }
   if (localPriorities.value.length >= MAX_PRIORITIES) {
-    error.value = `Maximum ${MAX_PRIORITIES} priorities`;
+    error.value = t("settings.priorities.maxReached", { max: MAX_PRIORITIES });
     return;
   }
   error.value = "";
@@ -137,7 +145,7 @@ async function addPriority() {
     showSwatchFor.value = null;
     emit("changed");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to add priority";
+    error.value = errorText(e, "settings.priorities.addFailed");
   } finally {
     adding.value = false;
   }
@@ -179,18 +187,18 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
 
 <template>
   <ModalShell
-    title="Priorities"
-    subtitle="Drag to rank them — the top one is the most urgent."
+    :title="t('settings.priorities.title')"
+    :subtitle="t('settings.priorities.subtitle')"
     :width="520"
     @close="emit('close')"
   >
     <section class="sheet-section" @keydown.esc="onEscape">
       <div class="sheet-section-head">
-        <span class="sheet-label">Board priorities</span>
+        <span class="sheet-label">{{ t("settings.priorities.sectionLabel") }}</span>
         <span class="sheet-count">{{ localPriorities.length }} / {{ MAX_PRIORITIES }}</span>
       </div>
 
-      <div v-if="localPriorities.length === 0" class="sheet-empty">No priorities — add the first one below.</div>
+      <div v-if="localPriorities.length === 0" class="sheet-empty">{{ t("settings.priorities.empty") }}</div>
 
       <draggable
         :list="localPriorities"
@@ -204,8 +212,8 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
           <div class="sheet-row" :class="{ 'is-confirming': confirmDeleteId === element.id }">
             <div v-if="confirmDeleteId === element.id" class="sheet-confirm">
               <span>
-                Delete “{{ element.name }}”?
-                <template v-if="cardCount(element)">{{ cardCount(element) }} {{ cardCount(element) === 1 ? "card loses" : "cards lose" }} it.</template>
+                {{ t("settings.priorities.deleteConfirm", { name: element.name }) }}
+                <template v-if="cardCount(element)">{{ t("settings.priorities.cardsLose", cardCount(element)) }}</template>
               </span>
               <button
                 v-focus
@@ -214,24 +222,24 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 :disabled="deletingId === element.id"
                 @click="removePriority(element)"
               >
-                {{ deletingId === element.id ? "Deleting..." : "Delete" }}
+                {{ deletingId === element.id ? t("settings.priorities.deleting") : t("common.delete") }}
               </button>
-              <button type="button" class="no" @click="confirmDeleteId = null">Cancel</button>
+              <button type="button" class="no" @click="confirmDeleteId = null">{{ t("common.cancel") }}</button>
             </div>
             <template v-else>
-              <span class="sheet-grip" title="Drag to reorder" aria-hidden="true">
+              <span class="sheet-grip" :title="t('settings.priorities.dragToReorder')" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
                   <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
                   <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
                 </svg>
               </span>
-              <span class="rank" :title="index === 0 ? 'Most urgent' : `Rank ${index + 1}`">{{ index + 1 }}</span>
+              <span class="rank" :title="index === 0 ? t('settings.priorities.mostUrgent') : t('settings.priorities.rank', { n: index + 1 })">{{ index + 1 }}</span>
               <button
                 type="button"
                 class="flag-btn"
-                :title="'Change color'"
-                :aria-label="`Change color of ${element.name}`"
+                :title="t('settings.priorities.changeColor')"
+                :aria-label="t('settings.priorities.changeColorOf', { name: element.name })"
                 :aria-expanded="showSwatchFor === element.id"
                 @click="toggleSwatches(element.id)"
               >
@@ -242,7 +250,7 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 type="text"
                 maxlength="30"
                 class="sheet-inline-input"
-                :aria-label="`Rename priority ${element.name}`"
+                :aria-label="t('settings.priorities.renameAria', { name: element.name })"
                 :disabled="savingId === element.id"
                 @focus="nameBeforeEdit = element.name"
                 @blur="saveName(element)"
@@ -250,13 +258,13 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                 @keydown.esc.prevent="revertName(element, $event)"
               />
               <span class="sheet-meta">
-                {{ cardCount(element) }} {{ cardCount(element) === 1 ? "card" : "cards" }}
+                {{ cardCount(element) }} {{ t("settings.priorities.cardWord", cardCount(element)) }}
               </span>
               <button
                 class="sheet-icon-btn danger"
                 type="button"
-                title="Delete priority"
-                :aria-label="`Delete priority ${element.name}`"
+                :title="t('settings.priorities.deletePriority')"
+                :aria-label="t('settings.priorities.deleteAria', { name: element.name })"
                 @click="confirmDeleteId = element.id"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -271,8 +279,8 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
                   class="sheet-swatch"
                   :class="{ selected: element.color === sw.hex }"
                   :style="{ background: sw.hex }"
-                  :title="sw.name"
-                  :aria-label="sw.name"
+                  :title="t(sw.labelKey)"
+                  :aria-label="t(sw.labelKey)"
                   @click="selectSwatch(element, sw.hex)"
                 />
               </div>
@@ -285,8 +293,8 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
         <button
           type="button"
           class="flag-btn"
-          title="Pick a color"
-          aria-label="Pick a color for the new priority"
+          :title="t('settings.priorities.pickColor')"
+          :aria-label="t('settings.priorities.pickColorNew')"
           :aria-expanded="showSwatchFor === NEW_PRIORITY"
           @click="toggleSwatches(NEW_PRIORITY)"
         >
@@ -297,12 +305,12 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
           type="text"
           maxlength="30"
           class="sheet-input"
-          placeholder="New priority name"
-          aria-label="New priority name"
+          :placeholder="t('settings.priorities.newName')"
+          :aria-label="t('settings.priorities.newName')"
           @keydown.enter.prevent="addPriority"
         />
         <button class="btn secondary" type="button" :disabled="adding" @click="addPriority">
-          {{ adding ? "Adding..." : "Add" }}
+          {{ adding ? t("settings.priorities.adding") : t("common.add") }}
         </button>
         <div v-if="showSwatchFor === NEW_PRIORITY" class="sheet-swatches">
           <button
@@ -312,20 +320,20 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown))
             class="sheet-swatch"
             :class="{ selected: newColor === sw.hex }"
             :style="{ background: sw.hex }"
-            :title="sw.name"
-            :aria-label="sw.name"
+            :title="t(sw.labelKey)"
+            :aria-label="t(sw.labelKey)"
             @click="selectNewSwatch(sw.hex)"
           />
         </div>
       </div>
-      <p v-else class="sheet-note">Priority limit reached ({{ MAX_PRIORITIES }}).</p>
-      <p class="sheet-note">Cards can also have no priority. Deleting one clears it from its cards.</p>
+      <p v-else class="sheet-note">{{ t("settings.priorities.limitReached", { max: MAX_PRIORITIES }) }}</p>
+      <p class="sheet-note">{{ t("settings.priorities.footNote") }}</p>
     </section>
 
     <p v-if="error" class="sheet-error">{{ error }}</p>
 
     <template #footer>
-      <button class="btn" type="button" @click="emit('close')">Done</button>
+      <button class="btn" type="button" @click="emit('close')">{{ t("common.done") }}</button>
     </template>
   </ModalShell>
 </template>

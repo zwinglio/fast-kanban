@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { deleteBoard, updateBoard, ApiError, type Board } from "../api";
+import { useI18n } from "vue-i18n";
+import { deleteBoard, updateBoard, ApiError, apiErrorMessage, type Board } from "../api";
 import { DENSITIES, type Density } from "../lib/density";
 import ModalShell from "./ModalShell.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 import BoardIcon from "./BoardIcon.vue";
 import { BOARD_ICONS } from "../lib/boardIcons";
+
+const { t, n } = useI18n();
 
 const props = defineProps<{
   boardId: string;
@@ -51,6 +54,11 @@ const canDelete = computed(() => deleteConfirm.value.trim() === props.title);
 
 onMounted(() => titleEl.value?.select());
 
+/** Localised message for a failed API call, with a translated fallback. */
+function errorText(e: unknown, fallbackKey: string): string {
+  return e instanceof ApiError ? apiErrorMessage(e) : t(fallbackKey);
+}
+
 function cancelDelete() {
   confirmingDelete.value = false;
   deleteConfirm.value = "";
@@ -65,7 +73,7 @@ async function removeBoard() {
     await deleteBoard(props.boardId, deleteConfirm.value.trim());
     emit("deleted");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to delete board";
+    error.value = errorText(e, "settings.general.deleteFailed");
   } finally {
     deleting.value = false;
   }
@@ -74,11 +82,14 @@ async function removeBoard() {
 async function save() {
   const trimmed = title.value.trim();
   if (!trimmed || trimmed.length > 255) {
-    error.value = "Title is required (max 255 chars)";
+    error.value = t("settings.general.titleRequired");
     return;
   }
   if (!nextValid.value) {
-    error.value = `Next card number must be between ${minNext} and ${MAX_SEQ.toLocaleString()}`;
+    error.value = t("settings.general.seqRange", {
+      min: n(minNext, "integer"),
+      max: n(MAX_SEQ, "integer"),
+    });
     return;
   }
   if (density.value !== props.density) emit("update:density", density.value);
@@ -105,7 +116,7 @@ async function save() {
     const updated = await updateBoard(props.boardId, patch);
     emit("saved", updated);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to save board";
+    error.value = errorText(e, "settings.general.saveFailed");
   } finally {
     saving.value = false;
   }
@@ -113,10 +124,15 @@ async function save() {
 </script>
 
 <template>
-  <ModalShell title="General" subtitle="Board name, icon, identifier and layout." :width="520" @close="emit('close')">
+  <ModalShell
+    :title="t('settings.general.title')"
+    :subtitle="t('settings.general.subtitle')"
+    :width="520"
+    @close="emit('close')"
+  >
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <label class="sheet-label" for="board-title">Title</label>
+        <label class="sheet-label" for="board-title">{{ t("settings.general.titleLabel") }}</label>
       </div>
       <div class="title-row">
         <BoardIcon :icon="icon" :title="title" :size="36" />
@@ -127,7 +143,7 @@ async function save() {
           type="text"
           maxlength="255"
           class="sheet-input"
-          placeholder="Board title"
+          :placeholder="t('settings.general.titlePlaceholder')"
           @keydown.enter.prevent="save"
         />
       </div>
@@ -135,15 +151,15 @@ async function save() {
 
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <span class="sheet-label">Icon</span>
+        <span class="sheet-label">{{ t("settings.general.iconLabel") }}</span>
       </div>
-      <div class="icon-grid" role="radiogroup" aria-label="Board icon">
+      <div class="icon-grid" role="radiogroup" :aria-label="t('settings.general.iconGroupAria')">
         <button
           type="button"
           role="radio"
           class="icon-opt"
           :aria-checked="icon === null"
-          title="First letter of the title"
+          :title="t('settings.general.firstLetter')"
           @click="icon = null"
         >
           <BoardIcon :title="title" :size="30" :muted="icon !== null" />
@@ -155,20 +171,20 @@ async function save() {
           role="radio"
           class="icon-opt"
           :aria-checked="icon === opt.id"
-          :title="opt.label"
-          :aria-label="opt.label"
+          :title="t(opt.labelKey)"
+          :aria-label="t(opt.labelKey)"
           @click="icon = opt.id"
         >
           <BoardIcon :icon="opt.id" :size="30" :muted="icon !== opt.id" />
         </button>
       </div>
-      <p class="sheet-note">Shown in the header, the board switcher and your recent boards.</p>
+      <p class="sheet-note">{{ t("settings.general.iconNote") }}</p>
     </section>
 
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <label class="sheet-label" for="next-seq">Card numbering</label>
-        <span class="sheet-key" title="Card ID prefix — can't be changed">{{ prefix }}</span>
+        <label class="sheet-label" for="next-seq">{{ t("settings.general.cardNumbering") }}</label>
+        <span class="sheet-key" :title="t('settings.general.prefixTitle')">{{ prefix }}</span>
       </div>
       <div class="seq-row" :class="{ invalid: !nextValid }">
         <span class="seq-prefix">{{ prefix }}-</span>
@@ -184,46 +200,50 @@ async function save() {
           aria-describedby="next-seq-note"
           @keydown.enter.prevent="save"
         />
-        <span class="seq-caption">next card</span>
+        <span class="seq-caption">{{ t("settings.general.nextCard") }}</span>
       </div>
       <p id="next-seq-note" class="sheet-note">
-        <template v-if="nextValid">
-          New cards continue from <b>{{ prefix }}-{{ nextSeq }}</b>.
-          <template v-if="highestSeq">Must stay above {{ prefix }}-{{ highestSeq }}, the highest ID in use.</template>
-          <template v-else>Set it to keep the numbering from a previous project.</template>
-        </template>
-        <template v-else>Use a whole number from {{ minNext }} to {{ MAX_SEQ.toLocaleString() }} so no ID is reused.</template>
+        <i18n-t v-if="nextValid && highestSeq" keypath="settings.general.seqContinueAbove" tag="span">
+          <template #id><b>{{ prefix }}-{{ nextSeq }}</b></template>
+          <template #above>{{ prefix }}-{{ highestSeq }}</template>
+        </i18n-t>
+        <i18n-t v-else-if="nextValid" keypath="settings.general.seqContinueFresh" tag="span">
+          <template #id><b>{{ prefix }}-{{ nextSeq }}</b></template>
+        </i18n-t>
+        <span v-else>
+          {{ t("settings.general.seqInvalid", { min: n(minNext, "integer"), max: n(MAX_SEQ, "integer") }) }}
+        </span>
       </p>
     </section>
 
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <span class="sheet-label">Planning</span>
+        <span class="sheet-label">{{ t("settings.general.planning") }}</span>
       </div>
       <ToggleSwitch
         v-model="pointsEnabled"
-        label="Story points"
-        hint="Estimate cards with points and see totals per column."
+        :label="t('settings.general.storyPoints')"
+        :hint="t('settings.general.storyPointsHint')"
       />
       <p v-if="!pointsEnabled && props.pointsEnabled" class="sheet-note">
-        Points are hidden when turned off — estimates on cards are kept.
+        {{ t("settings.general.pointsHidden") }}
       </p>
       <ToggleSwitch
         v-model="dependenciesEnabled"
         class="toggle-gap"
-        label="Dependencies"
-        hint="Link cards as “blocked by” and “blocks”, and flag cards that are waiting on others."
+        :label="t('settings.general.dependencies')"
+        :hint="t('settings.general.dependenciesHint')"
       />
       <p v-if="!dependenciesEnabled && props.dependenciesEnabled" class="sheet-note">
-        Dependencies are hidden when turned off — links between cards are kept.
+        {{ t("settings.general.dependenciesHidden") }}
       </p>
     </section>
 
     <section class="sheet-section">
       <div class="sheet-section-head">
-        <span class="sheet-label">Card density</span>
+        <span class="sheet-label">{{ t("settings.general.density.aria") }}</span>
       </div>
-      <div class="density-grid" role="radiogroup" aria-label="Card density">
+      <div class="density-grid" role="radiogroup" :aria-label="t('settings.general.density.aria')">
         <button
           v-for="opt in DENSITIES"
           :key="opt.value"
@@ -248,27 +268,29 @@ async function save() {
               <span v-if="opt.value === 'comfortable'" class="mini-line faint" />
             </span>
           </span>
-          <span class="density-label">{{ opt.label }}</span>
-          <span class="density-hint">{{ opt.hint }}</span>
+          <span class="density-label">{{ t(opt.labelKey) }}</span>
+          <span class="density-hint">{{ t(opt.hintKey) }}</span>
         </button>
       </div>
-      <p class="sheet-note">Saved in this browser, for this board.</p>
+      <p class="sheet-note">{{ t("settings.general.density.savedNote") }}</p>
     </section>
 
     <section class="sheet-section danger-zone">
       <div class="sheet-section-head">
-        <span class="sheet-label">Danger zone</span>
+        <span class="sheet-label">{{ t("settings.general.dangerZone") }}</span>
       </div>
       <p class="sheet-note danger-note">
-        Permanently deletes the board, its cards, comments and history. This can't be undone.
+        {{ t("settings.general.dangerNote") }}
       </p>
 
       <button v-if="!confirmingDelete" class="btn danger" type="button" @click="confirmingDelete = true">
-        Delete board…
+        {{ t("settings.general.deleteBoard") }}
       </button>
       <template v-else>
         <label class="delete-hint" for="delete-board-confirm">
-          Type <b>{{ props.title }}</b> to confirm
+          <i18n-t keypath="settings.general.deleteConfirm">
+            <template #title><b>{{ props.title }}</b></template>
+          </i18n-t>
         </label>
         <div class="delete-row">
           <input
@@ -282,9 +304,9 @@ async function save() {
             @keydown.enter.prevent="removeBoard"
           />
           <button class="btn danger" type="button" :disabled="!canDelete || deleting" @click="removeBoard">
-            {{ deleting ? "Deleting..." : "Delete permanently" }}
+            {{ deleting ? t("settings.general.deleting") : t("settings.general.deletePermanently") }}
           </button>
-          <button class="btn secondary" type="button" :disabled="deleting" @click="cancelDelete">Cancel</button>
+          <button class="btn secondary" type="button" :disabled="deleting" @click="cancelDelete">{{ t("common.cancel") }}</button>
         </div>
       </template>
     </section>
@@ -292,9 +314,9 @@ async function save() {
     <p v-if="error" class="sheet-error">{{ error }}</p>
 
     <template #footer>
-      <button class="btn secondary" type="button" @click="emit('close')">Cancel</button>
+      <button class="btn secondary" type="button" @click="emit('close')">{{ t("common.cancel") }}</button>
       <button class="btn" type="button" :disabled="saving" @click="save">
-        {{ saving ? "Saving..." : "Save" }}
+        {{ saving ? t("settings.general.saving") : t("common.save") }}
       </button>
     </template>
   </ModalShell>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag, type Priority, type Dependency } from "../api";
+import { useI18n } from "vue-i18n";
+import { apiErrorMessage, getBoard, updateCard, verifyEditKey as apiVerifyEditKey, type Board, type Card, type Column, type Tag, type Priority, type Dependency } from "../api";
 import { getEditKey, setEditKey, clearEditKey } from "../lib/editKey";
 import { rememberBoard, forgetBoard } from "../lib/recentBoards";
 import ColumnComp from "../components/Column.vue";
@@ -20,6 +21,8 @@ import type { ArchiveView } from "../lib/archive";
 import { parseCardNumber } from "../lib/cardSearch";
 import { cardRoute, cardSlug, parseCardSlug } from "../lib/cardLink";
 import { useLiveBoard, type LiveChange } from "../lib/liveBoard";
+
+const { t, locale } = useI18n();
 
 const route = useRoute();
 const router = useRouter();
@@ -50,7 +53,7 @@ const archiveView = ref<ArchiveView>("active");
 const readOnly = ref(true);
 const showNewKeyBanner = ref(route.query.newKey === "1");
 const newKeyValue = ref(getEditKey(boardId) ?? "");
-const copyLabel = ref("Copy");
+const copied = ref(false);
 
 const showKeyEntry = ref(false);
 const keyInput = ref("");
@@ -140,10 +143,10 @@ async function load(opts: { quiet?: boolean } = {}) {
       [...activePriorityIds.value].filter((id) => id === NO_PRIORITY || priorityIds.has(id))
     );
     fillColumns(data.cards);
-    document.title = `${data.board.title} - Fast Kanban`;
+    document.title = t("board.documentTitle", { title: data.board.title });
   } catch (e) {
-    loadError.value = "Board not found.";
-    document.title = "Fast Kanban";
+    loadError.value = apiErrorMessage(e);
+    document.title = t("board.appTitle");
   } finally {
     loading.value = false;
   }
@@ -244,7 +247,9 @@ async function runReload() {
     // A rename (or prefix change) in another tab must not leave the URL on the old slug.
     syncOpenCardSlug();
   } else {
-    remoteNotice.value = `${board.value?.prefix}-${modalState.value.card?.seq} was deleted by someone else.`;
+    remoteNotice.value = t("board.cardDeletedElsewhere", {
+      id: `${board.value?.prefix}-${modalState.value.card?.seq}`,
+    });
     closeModal();
   }
 }
@@ -268,8 +273,8 @@ function onLiveChange(change: LiveChange) {
     board.value = null;
     modalState.value = null;
     loading.value = false;
-    loadError.value = "Board not found.";
-    document.title = "Fast Kanban";
+    loadError.value = t("board.boardNotFound");
+    document.title = t("board.appTitle");
     return;
   }
   scheduleReload();
@@ -514,8 +519,8 @@ function onTagDeleted(id: number) {
 async function copyKey() {
   try {
     await navigator.clipboard.writeText(newKeyValue.value);
-    copyLabel.value = "Copied!";
-    setTimeout(() => (copyLabel.value = "Copy"), 1500);
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 1500);
   } catch {
     // Clipboard API unavailable; user can select manually.
   }
@@ -533,7 +538,7 @@ async function submitKeyEntry() {
   try {
     const { valid } = await apiVerifyEditKey(boardId, key);
     if (!valid) {
-      keyEntryError.value = "Invalid edit key.";
+      keyEntryError.value = t("board.enterKey.invalid");
       return;
     }
     setEditKey(boardId, key);
@@ -541,8 +546,8 @@ async function submitKeyEntry() {
     rememberBoard({ id: boardId, title: board.value?.title ?? "", hasKey: true, icon: board.value?.icon ?? null });
     showKeyEntry.value = false;
     keyInput.value = "";
-  } catch {
-    keyEntryError.value = "Could not verify key.";
+  } catch (e) {
+    keyEntryError.value = apiErrorMessage(e);
   } finally {
     keyEntryLoading.value = false;
   }
@@ -557,7 +562,7 @@ async function onSettingsChanged() {
 function onBoardSaved(updated: Board) {
   if (board.value) {
     board.value = updated;
-    document.title = `${updated.title} - Fast Kanban`;
+    document.title = t("board.documentTitle", { title: updated.title });
     rememberBoard({ id: boardId, title: updated.title, hasKey: !readOnly.value, icon: updated.icon });
   }
   activePanel.value = null;
@@ -569,11 +574,18 @@ function onBoardDeleted() {
   forgetBoard(boardId);
   router.push({ name: "home" });
 }
+
+// The tab title follows a live locale switch, like every other rendered string.
+watch(locale, () => {
+  document.title = board.value
+    ? t("board.documentTitle", { title: board.value.title })
+    : t("board.appTitle");
+});
 </script>
 
 <template>
   <div class="board-page">
-    <div v-if="loading" class="status-msg">Loading board...</div>
+    <div v-if="loading" class="status-msg">{{ t("board.loading") }}</div>
     <div v-else-if="loadError" class="status-msg">{{ loadError }}</div>
     <template v-else-if="board">
       <BoardHeader
@@ -600,7 +612,7 @@ function onBoardDeleted() {
 
       <div v-if="remoteNotice" class="remote-notice" role="status">
         <span>{{ remoteNotice }}</span>
-        <button type="button" class="notice-dismiss" aria-label="Dismiss" @click="remoteNotice = ''">
+        <button type="button" class="notice-dismiss" :aria-label="t('board.dismiss')" @click="remoteNotice = ''">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
       </div>
@@ -613,20 +625,20 @@ function onBoardDeleted() {
           </svg>
         </span>
         <div class="key-banner-text">
-          <strong>Save your edit key</strong>
-          <span>You'll need it to make changes from another browser. It won't be shown again.</span>
+          <strong>{{ t("board.keyBanner.title") }}</strong>
+          <span>{{ t("board.keyBanner.body") }}</span>
           <code class="key-value">{{ newKeyValue }}</code>
         </div>
         <div class="key-banner-actions">
-          <button class="btn" type="button" @click="copyKey">{{ copyLabel }}</button>
-          <button class="btn secondary" type="button" @click="dismissBanner">Dismiss</button>
+          <button class="btn" type="button" @click="copyKey">{{ copied ? t("common.copied") : t("common.copy") }}</button>
+          <button class="btn secondary" type="button" @click="dismissBanner">{{ t("board.dismiss") }}</button>
         </div>
       </div>
 
       <ModalShell
         v-if="showKeyEntry"
-        title="Enter edit key"
-        subtitle="Paste the key you got when this board was created."
+        :title="t('board.enterKey.title')"
+        :subtitle="t('board.enterKey.subtitle')"
         :width="420"
         @close="showKeyEntry = false"
       >
@@ -635,15 +647,15 @@ function onBoardDeleted() {
           v-focus
           type="text"
           class="sheet-input key-input"
-          placeholder="Paste your edit key"
-          aria-label="Edit key"
+          :placeholder="t('board.enterKey.placeholder')"
+          :aria-label="t('board.enterKey.label')"
           @keydown.enter.prevent="submitKeyEntry"
         />
         <p v-if="keyEntryError" class="sheet-error">{{ keyEntryError }}</p>
         <template #footer>
-          <button class="btn secondary" type="button" @click="showKeyEntry = false">Cancel</button>
+          <button class="btn secondary" type="button" @click="showKeyEntry = false">{{ t("common.cancel") }}</button>
           <button class="btn" type="button" :disabled="keyEntryLoading" @click="submitKeyEntry">
-            {{ keyEntryLoading ? "Checking..." : "Unlock editing" }}
+            {{ keyEntryLoading ? t("board.enterKey.checking") : t("board.enterKey.unlock") }}
           </button>
         </template>
       </ModalShell>

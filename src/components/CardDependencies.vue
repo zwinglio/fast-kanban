@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import type { Card, Column, Dependency } from "../api";
 import { cardRoute } from "../lib/cardLink";
 import { parseCardNumber } from "../lib/cardSearch";
 
 const MAX_RESULTS = 8;
+
+const { t, n } = useI18n();
 
 // Edits a draft of the board's links; the card modal persists them on Save like every other field.
 const props = defineProps<{
@@ -163,23 +166,25 @@ function onSearchKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <section class="deps" aria-label="Dependencies">
+  <section class="deps" :aria-label="t('dependencies.title')">
     <div class="deps-head">
-      <span class="label">Dependencies</span>
-      <span v-if="openBlockers" class="blocked-pill">Blocked · {{ openBlockers }}</span>
+      <span class="label">{{ t("dependencies.title") }}</span>
+      <span v-if="openBlockers" class="blocked-pill">
+        {{ t("dependencies.blockedPill", { count: n(openBlockers, "integer") }) }}
+      </span>
     </div>
 
     <div class="group">
-      <div class="group-title">Blocked by</div>
+      <div class="group-title">{{ t("dependencies.blockedBy") }}</div>
       <ul v-if="blockers.length" class="dep-list">
         <li v-for="c in blockers" :key="c.id" class="dep" :class="{ resolved: isResolved(c) }">
-          <span class="dep-status" :title="isResolved(c) ? 'Done' : columnsById.get(c.columnId)?.name">
+          <span class="dep-status" :title="isResolved(c) ? t('common.done') : columnsById.get(c.columnId)?.name">
             <svg v-if="isResolved(c)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
             <span v-else class="dot" :style="{ background: columnsById.get(c.columnId)?.color }" />
           </span>
-          <a class="dep-link" :href="cardHref(c)" :title="`Open ${label(c)}: ${c.title}`" @click="onLinkClick($event, c)">
+          <a class="dep-link" :href="cardHref(c)" :title="t('dependencies.openTitle', { id: label(c), title: c.title })" @click="onLinkClick($event, c)">
             <span class="dep-id">{{ label(c) }}</span>
             <span class="dep-title">{{ c.title }}</span>
           </a>
@@ -187,24 +192,24 @@ function onSearchKeydown(e: KeyboardEvent) {
             v-if="!readOnly"
             type="button"
             class="dep-remove"
-            :aria-label="`Remove: blocked by ${label(c)}`"
+            :aria-label="t('dependencies.removeBlockedBy', { id: label(c) })"
             @click="unlink(cardId, c.id)"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </li>
       </ul>
-      <p v-else class="none">Nothing</p>
+      <p v-else class="none">{{ t("dependencies.nothing") }}</p>
     </div>
 
     <div class="group">
-      <div class="group-title">Blocks</div>
+      <div class="group-title">{{ t("dependencies.blocks") }}</div>
       <ul v-if="blocking.length" class="dep-list">
         <li v-for="c in blocking" :key="c.id" class="dep">
           <span class="dep-status" :title="columnsById.get(c.columnId)?.name">
             <span class="dot" :style="{ background: columnsById.get(c.columnId)?.color }" />
           </span>
-          <a class="dep-link" :href="cardHref(c)" :title="`Open ${label(c)}: ${c.title}`" @click="onLinkClick($event, c)">
+          <a class="dep-link" :href="cardHref(c)" :title="t('dependencies.openTitle', { id: label(c), title: c.title })" @click="onLinkClick($event, c)">
             <span class="dep-id">{{ label(c) }}</span>
             <span class="dep-title">{{ c.title }}</span>
           </a>
@@ -212,29 +217,29 @@ function onSearchKeydown(e: KeyboardEvent) {
             v-if="!readOnly"
             type="button"
             class="dep-remove"
-            :aria-label="`Remove: blocks ${label(c)}`"
+            :aria-label="t('dependencies.removeBlocks', { id: label(c) })"
             @click="unlink(c.id, cardId)"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </li>
       </ul>
-      <p v-else class="none">Nothing</p>
+      <p v-else class="none">{{ t("dependencies.nothing") }}</p>
     </div>
 
     <template v-if="!readOnly">
       <div v-if="adding" class="add-panel">
-        <div class="seg" role="group" aria-label="Link type">
-          <button type="button" :aria-pressed="mode === 'blocked_by'" @click="mode = 'blocked_by'">Blocked by</button>
-          <button type="button" :aria-pressed="mode === 'blocks'" @click="mode = 'blocks'">Blocks</button>
+        <div class="seg" role="group" :aria-label="t('dependencies.linkType')">
+          <button type="button" :aria-pressed="mode === 'blocked_by'" @click="mode = 'blocked_by'">{{ t("dependencies.blockedBy") }}</button>
+          <button type="button" :aria-pressed="mode === 'blocks'" @click="mode = 'blocks'">{{ t("dependencies.blocks") }}</button>
         </div>
         <input
           ref="searchEl"
           v-model="query"
           type="text"
           class="search"
-          :placeholder="`Card number (12, #12, ${prefix}-12) or title…`"
-          aria-label="Find a card"
+          :placeholder="t('dependencies.searchPlaceholder', { prefix })"
+          :aria-label="t('dependencies.findCard')"
           @keydown="onSearchKeydown"
         />
         <ul class="results" role="listbox">
@@ -243,19 +248,19 @@ function onSearchKeydown(e: KeyboardEvent) {
               <span class="dot" :style="{ background: columnsById.get(c.columnId)?.color }" />
               <span class="dep-id">{{ label(c) }}</span>
               <span class="dep-title">{{ c.title }}</span>
-              <span v-if="c.archivedAt" class="archived">archived</span>
+              <span v-if="c.archivedAt" class="archived">{{ t("dependencies.archived") }}</span>
             </button>
           </li>
-          <li v-if="!candidates.length" class="none">No matching cards.</li>
+          <li v-if="!candidates.length" class="none">{{ t("dependencies.noMatches") }}</li>
         </ul>
         <div class="add-foot">
-          <span>{{ mode === "blocked_by" ? "This card waits on the one you pick." : "The card you pick waits on this one." }}</span>
-          <button type="button" class="link muted" @click="closeAdd">Done</button>
+          <span>{{ mode === "blocked_by" ? t("dependencies.waitingHint") : t("dependencies.waitsOnHint") }}</span>
+          <button type="button" class="link muted" @click="closeAdd">{{ t("common.done") }}</button>
         </div>
       </div>
       <button v-else type="button" class="add-btn" @click="openAdd()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
-        Add dependency
+        {{ t("dependencies.add") }}
       </button>
     </template>
   </section>

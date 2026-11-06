@@ -2,33 +2,39 @@ import { Hono } from "hono";
 import { prisma } from "../db.js";
 import { notifyBoard } from "../live.js";
 import { verifyEditKey } from "../auth.js";
+import { fail, type ErrorCode } from "../errors.js";
 import { eventRows } from "../events.js";
 
 export const tags = new Hono();
 
+/** Edit-key auth failure that routes turn into `fail(c, status, code, error)`. */
+function editKeyFailure(status: 401 | 404, code: ErrorCode, error: string) {
+  return { ok: false as const, status, code, error };
+}
+
 async function requireTagEditKey(tagId: number, key: string | undefined) {
-  if (!key) return { ok: false as const, status: 401 as const, error: "Missing edit key" };
+  if (!key) return editKeyFailure(401, "MISSING_EDIT_KEY", "Missing edit key");
   const tag = await prisma.tag.findUnique({ where: { id: tagId } });
-  if (!tag) return { ok: false as const, status: 404 as const, error: "Tag not found" };
+  if (!tag) return editKeyFailure(404, "TAG_NOT_FOUND", "Tag not found");
   const board = await prisma.board.findUnique({ where: { id: tag.boardId } });
-  if (!board) return { ok: false as const, status: 404 as const, error: "Board not found" };
+  if (!board) return editKeyFailure(404, "BOARD_NOT_FOUND", "Board not found");
   const valid = await verifyEditKey(key, board.editHash);
-  if (!valid) return { ok: false as const, status: 401 as const, error: "Invalid edit key" };
+  if (!valid) return editKeyFailure(401, "INVALID_EDIT_KEY", "Invalid edit key");
   return { ok: true as const, tag };
 }
 
 // PATCH /api/tags/:id - rename a tag
 tags.patch("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid tag id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_TAG_ID", "Invalid tag id");
 
   const check = await requireTagEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const body = await c.req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   if (!name || name.length > 50) {
-    return c.json({ error: "Tag name must be 1-50 chars" }, 400);
+    return fail(c, 400, "TAG_NAME_LENGTH", "Tag name must be 1-50 chars", { min: 1, max: 50 });
   }
 
   const existing = await prisma.tag.findUnique({
@@ -36,7 +42,7 @@ tags.patch("/:id", async (c) => {
     select: { id: true },
   });
   if (existing && existing.id !== id) {
-    return c.json({ error: "A tag with this name already exists" }, 400);
+    return fail(c, 400, "TAG_NAME_EXISTS", "A tag with this name already exists");
   }
 
   const tag = await prisma.tag.update({ where: { id }, data: { name } });
@@ -47,10 +53,10 @@ tags.patch("/:id", async (c) => {
 // DELETE /api/tags/:id - detach a tag from all cards and remove it from the board
 tags.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "Invalid tag id" }, 400);
+  if (!Number.isInteger(id)) return fail(c, 400, "INVALID_TAG_ID", "Invalid tag id");
 
   const check = await requireTagEditKey(id, c.req.header("X-Edit-Key"));
-  if (!check.ok) return c.json({ error: check.error }, check.status);
+  if (!check.ok) return fail(c, check.status, check.code, check.error);
 
   const affected = await prisma.card.findMany({ where: { tags: { some: { id } } }, select: { id: true } });
   await prisma.$transaction([

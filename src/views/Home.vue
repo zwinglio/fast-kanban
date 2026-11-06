@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createBoard, ApiError } from "../api";
+import { useI18n } from "vue-i18n";
+import { createBoard, ApiError, apiErrorMessage } from "../api";
+import { relativeTime } from "../lib/formatTime";
 import { setEditKey } from "../lib/editKey";
 import { forgetBoard, getRecentBoards, type RecentBoard } from "../lib/recentBoards";
 import ThemeToggle from "../components/ThemeToggle.vue";
+import LanguageToggle from "../components/LanguageToggle.vue";
 import BoardIcon from "../components/BoardIcon.vue";
 
 const MAX_SEQ = 999_999;
 const RECENT_PREVIEW = 5;
 
+const { t, d, n, locale } = useI18n();
 const router = useRouter();
 const title = ref("");
 const prefix = ref("");
@@ -29,16 +33,13 @@ function removeRecent(id: string) {
   recent.value = getRecentBoards();
 }
 
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 function visitedLabel(ts: number) {
   const minutes = Math.round((ts - Date.now()) / 60_000);
-  if (minutes > -1) return "just now";
-  if (minutes > -60) return rtf.format(minutes, "minute");
+  if (minutes > -1) return t("home.justNow");
   const hours = Math.round(minutes / 60);
-  if (hours > -24) return rtf.format(hours, "hour");
   const days = Math.round(hours / 24);
-  if (days > -30) return rtf.format(days, "day");
-  return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  if (days > -30) return relativeTime(ts, locale.value);
+  return d(new Date(ts), "medium");
 }
 
 // Keep the prefix to what the server accepts: uppercase letters and digits only.
@@ -63,15 +64,15 @@ function toggleContinue() {
 async function submit() {
   error.value = "";
   if (!title.value.trim()) {
-    error.value = "Give the board a title.";
+    error.value = t("home.errorTitle");
     return;
   }
   if (!prefix.value) {
-    error.value = "Choose a card prefix, like PROJ.";
+    error.value = t("home.errorPrefix");
     return;
   }
   if (!startValid.value) {
-    error.value = `The first card number must be a whole number from 1 to ${MAX_SEQ.toLocaleString()}.`;
+    error.value = t("home.errorStart", { max: n(MAX_SEQ, "integer") });
     return;
   }
   loading.value = true;
@@ -79,12 +80,13 @@ async function submit() {
     const { id, editKey } = await createBoard(
       title.value.trim(),
       prefix.value,
-      continueNumbering.value ? startNumber.value : undefined
+      continueNumbering.value ? startNumber.value : undefined,
+      locale.value
     );
     setEditKey(id, editKey);
     router.push({ name: "board", params: { id }, query: { newKey: "1" } });
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to create board";
+    error.value = e instanceof ApiError ? apiErrorMessage(e) : t("home.createFailed");
   } finally {
     loading.value = false;
   }
@@ -98,25 +100,28 @@ async function submit() {
         <span class="brand-mark"><img src="/favicon.svg" alt="" width="22" height="22" /></span>
         <span class="brand-name">Fast Kanban</span>
       </div>
-      <ThemeToggle />
+      <div class="home-actions">
+        <LanguageToggle />
+        <ThemeToggle />
+      </div>
     </header>
 
     <main class="home-main">
       <section class="panel create">
         <div class="panel-head">
-          <h1>Create a board</h1>
-          <p>A lightweight roadmap board in seconds. No signup.</p>
+          <h1>{{ t("home.title") }}</h1>
+          <p>{{ t("home.subtitle") }}</p>
         </div>
 
         <form class="panel-body" novalidate @submit.prevent="submit">
           <div class="field">
-            <label class="label" for="board-title">Board title</label>
+            <label class="label" for="board-title">{{ t("home.boardTitle") }}</label>
             <input
               id="board-title"
               v-model="title"
               class="input"
               type="text"
-              placeholder="e.g. Website Relaunch"
+              :placeholder="t('home.boardTitlePlaceholder')"
               maxlength="255"
               autofocus
             />
@@ -124,8 +129,8 @@ async function submit() {
 
           <div class="field">
             <div class="label-row">
-              <label class="label" for="board-prefix">Card prefix</label>
-              <span class="preview" :class="{ placeholder: !prefix }" title="How card IDs will look">
+              <label class="label" for="board-prefix">{{ t("home.cardPrefix") }}</label>
+              <span class="preview" :class="{ placeholder: !prefix }" :title="t('home.prefixPreview')">
                 {{ previewPrefix }}-{{ startNumber }}
               </span>
             </div>
@@ -134,13 +139,13 @@ async function submit() {
               :value="prefix"
               class="input mono-caps"
               type="text"
-              placeholder="e.g. PROJ"
+              :placeholder="t('home.prefixPlaceholder')"
               maxlength="16"
               autocomplete="off"
               spellcheck="false"
               @input="onPrefixInput"
             />
-            <p class="hint">Letters and numbers, up to 16. It can't be changed later.</p>
+            <p class="hint">{{ t("home.prefixHint") }}</p>
           </div>
 
           <div class="continue" :class="{ on: continueNumbering }">
@@ -153,13 +158,13 @@ async function submit() {
             >
               <span class="switch" aria-hidden="true"><span class="knob" /></span>
               <span class="switch-text">
-                <span class="switch-title">Continue numbering from another project</span>
-                <span class="switch-hint">Keep the IDs your team already uses instead of starting at 1.</span>
+                <span class="switch-title">{{ t("home.continueTitle") }}</span>
+                <span class="switch-hint">{{ t("home.continueHint") }}</span>
               </span>
             </button>
 
             <div v-if="continueNumbering" class="continue-body">
-              <label class="label" for="start-at">First card number</label>
+              <label class="label" for="start-at">{{ t("home.firstCardNumber") }}</label>
               <div class="start-row">
                 <span class="start-prefix">{{ previewPrefix }}-</span>
                 <input
@@ -174,12 +179,14 @@ async function submit() {
                   inputmode="numeric"
                 />
               </div>
-              <p class="hint">
-                <template v-if="startValid">
-                  Your first card will be <b>{{ previewPrefix }}-{{ startNumber }}</b>, then
-                  {{ previewPrefix }}-{{ startNumber + 1 }}, and so on.
+              <i18n-t v-if="startValid" keypath="home.startHint" tag="p" class="hint" scope="global">
+                <template #first>
+                  <b>{{ previewPrefix }}-{{ startNumber }}</b>
                 </template>
-                <template v-else>Use a whole number from 1 to {{ MAX_SEQ.toLocaleString() }}.</template>
+                <template #next>{{ previewPrefix }}-{{ startNumber + 1 }}</template>
+              </i18n-t>
+              <p v-else class="hint">
+                {{ t("home.startHintInvalid", { max: n(MAX_SEQ, "integer") }) }}
               </p>
             </div>
           </div>
@@ -187,7 +194,7 @@ async function submit() {
           <p v-if="error" class="error" role="alert">{{ error }}</p>
 
           <button class="btn submit" type="submit" :disabled="loading">
-            {{ loading ? "Creating..." : "Create board" }}
+            {{ loading ? t("home.creating") : t("home.create") }}
           </button>
         </form>
       </section>
@@ -195,7 +202,7 @@ async function submit() {
       <div class="side">
         <section v-if="recent.length" class="panel recent">
           <div class="panel-head recent-head">
-            <h2>Recent boards</h2>
+            <h2>{{ t("home.recentBoards") }}</h2>
             <span class="count">{{ recent.length }}</span>
           </div>
           <ul class="recent-list">
@@ -203,16 +210,16 @@ async function submit() {
               <router-link :to="{ name: 'board', params: { id: b.id } }" class="recent-link">
                 <BoardIcon :icon="b.icon" :title="b.title" :size="30" />
                 <span class="recent-text">
-                  <span class="recent-title">{{ b.title || "Untitled board" }}</span>
-                  <span class="recent-meta">Visited {{ visitedLabel(b.lastAccessed) }}</span>
+                  <span class="recent-title">{{ b.title || t("home.untitledBoard") }}</span>
+                  <span class="recent-meta">{{ t("home.visited", { time: visitedLabel(b.lastAccessed) }) }}</span>
                 </span>
-                <span v-if="!b.hasKey" class="ro-badge">Read-only</span>
+                <span v-if="!b.hasKey" class="ro-badge">{{ t("home.readOnly") }}</span>
               </router-link>
               <button
                 type="button"
                 class="recent-remove"
-                title="Remove from list"
-                :aria-label="`Remove ${b.title} from recent boards`"
+                :title="t('home.removeFromList')"
+                :aria-label="t('home.removeBoard', { title: b.title || t('home.untitledBoard') })"
                 @click="removeRecent(b.id)"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
@@ -227,39 +234,39 @@ async function submit() {
             class="recent-more"
             @click="showAllRecent = !showAllRecent"
           >
-            {{ showAllRecent ? "Show fewer" : `Show all ${recent.length}` }}
+            {{ showAllRecent ? t("home.showFewer") : t("home.showAll", { n: recent.length }) }}
           </button>
-          <p class="recent-note">Only on this device. Removing a board here doesn't delete it.</p>
+          <p class="recent-note">{{ t("home.recentNote") }}</p>
         </section>
 
         <aside class="panel info">
           <div class="panel-head">
-            <h2>Built for fast, temporary projects</h2>
+            <h2>{{ t("home.benefitsTitle") }}</h2>
           </div>
           <ul class="benefits panel-body">
             <li>
               <span class="benefit-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></svg>
               </span>
-              <span><b>Ready in seconds.</b> No account, no setup — just a title and a prefix.</span>
+              <span><b>{{ t("home.benefit1Title") }}</b> {{ t("home.benefit1Body") }}</span>
             </li>
             <li>
               <span class="benefit-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5" /><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" /></svg>
               </span>
-              <span><b>Share a link.</b> Anyone with it can follow along in read-only mode.</span>
+              <span><b>{{ t("home.benefit2Title") }}</b> {{ t("home.benefit2Body") }}</span>
             </li>
             <li>
               <span class="benefit-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h7" /></svg>
               </span>
-              <span><b>Bring your numbering.</b> Moving from another tracker? Continue from the ID you were on.</span>
+              <span><b>{{ t("home.benefit3Title") }}</b> {{ t("home.benefit3Body") }}</span>
             </li>
             <li>
               <span class="benefit-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
               </span>
-              <span><b>Private by design.</b> No emails or names — editing uses a key stored on your device.</span>
+              <span><b>{{ t("home.benefit4Title") }}</b> {{ t("home.benefit4Body") }}</span>
             </li>
           </ul>
         </aside>
@@ -267,7 +274,7 @@ async function submit() {
     </main>
 
     <footer class="credits">
-      Made in Brazil 🇧🇷 by
+      {{ t("home.footer") }}
       <a href="https://zwinglio.com" target="_blank" rel="noopener noreferrer">Samuel Zwinglio</a>
     </footer>
   </div>
@@ -315,6 +322,11 @@ async function submit() {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+.home-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* layout */
@@ -735,6 +747,9 @@ form.panel-body {
 @media (max-width: 760px) {
   .home {
     padding: 16px;
+  }
+  .home-actions {
+    gap: 4px;
   }
   .home-main {
     grid-template-columns: minmax(0, 1fr);

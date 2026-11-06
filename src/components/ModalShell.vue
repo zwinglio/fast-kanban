@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 withDefaults(
   defineProps<{
@@ -13,6 +14,8 @@ withDefaults(
 const emit = defineEmits<{
   close: [];
 }>();
+
+const { t } = useI18n();
 
 // Only close when the press both starts and ends on the backdrop, so a text
 // selection that drifts outside the panel doesn't dismiss it.
@@ -43,7 +46,7 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
           <h2 class="sheet-title">{{ title }}</h2>
           <p v-if="subtitle" class="sheet-subtitle">{{ subtitle }}</p>
         </div>
-        <button class="sheet-close" type="button" title="Close (Esc)" aria-label="Close" @click="emit('close')">
+        <button class="sheet-close" type="button" :title="t('common.closeEsc')" :aria-label="t('common.close')" @click="emit('close')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>

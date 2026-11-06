@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { createTag, deleteTag, renameTag, ApiError, type Tag } from "../api";
+import { useI18n } from "vue-i18n";
+import { createTag, deleteTag, renameTag, ApiError, apiErrorMessage, type Tag } from "../api";
 import ModalShell from "./ModalShell.vue";
 
 const MAX_TAGS = 5;
+
+const { t } = useI18n();
+
+/** Localised message for a failed API call, with a translated fallback. */
+function errorText(e: unknown, fallbackKey: string): string {
+  return e instanceof ApiError ? apiErrorMessage(e) : t(fallbackKey);
+}
 
 const props = defineProps<{
   boardId: string;
@@ -32,7 +40,7 @@ const vFocus = { mounted: (el: HTMLElement) => el.focus() };
 const tagLimitReached = computed(() => props.tags.length >= MAX_TAGS);
 
 function isDuplicate(name: string, exceptId?: number) {
-  return props.tags.some((t) => t.id !== exceptId && t.name.toLowerCase() === name.toLowerCase());
+  return props.tags.some((tag) => tag.id !== exceptId && tag.name.toLowerCase() === name.toLowerCase());
 }
 
 async function commitRename(tag: Tag) {
@@ -44,11 +52,11 @@ async function commitRename(tag: Tag) {
     return;
   }
   if (!name || name.length > 50) {
-    error.value = "Tag name must be 1-50 chars";
+    error.value = t("settings.tags.nameLength");
     return;
   }
   if (isDuplicate(name, tag.id)) {
-    error.value = "A tag with this name already exists";
+    error.value = t("settings.tags.duplicate");
     return;
   }
   renamingId.value = tag.id;
@@ -58,7 +66,7 @@ async function commitRename(tag: Tag) {
     emit("tagRenamed", updated);
     delete draftNames.value[tag.id];
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to rename tag";
+    error.value = errorText(e, "settings.tags.renameFailed");
   } finally {
     renamingId.value = null;
   }
@@ -78,7 +86,7 @@ async function removeTag(tag: Tag) {
     emit("tagDeleted", tag.id);
     confirmDeleteId.value = null;
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to delete tag";
+    error.value = errorText(e, "settings.tags.deleteFailed");
   } finally {
     deletingTagId.value = null;
   }
@@ -88,11 +96,11 @@ async function addTag() {
   error.value = "";
   const name = newTagName.value.trim();
   if (!name || name.length > 50) {
-    error.value = "Tag name must be 1-50 chars";
+    error.value = t("settings.tags.nameLength");
     return;
   }
   if (isDuplicate(name)) {
-    error.value = "A tag with this name already exists";
+    error.value = t("settings.tags.duplicate");
     return;
   }
   creatingTag.value = true;
@@ -101,7 +109,7 @@ async function addTag() {
     emit("tagCreated", tag);
     newTagName.value = "";
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Failed to create tag";
+    error.value = errorText(e, "settings.tags.createFailed");
   } finally {
     creatingTag.value = false;
   }
@@ -116,14 +124,19 @@ function onEscape(e: KeyboardEvent) {
 </script>
 
 <template>
-  <ModalShell title="Tags" subtitle="Shared by every card on this board." :width="460" @close="emit('close')">
+  <ModalShell
+    :title="t('settings.tags.title')"
+    :subtitle="t('settings.tags.subtitle')"
+    :width="460"
+    @close="emit('close')"
+  >
     <section class="sheet-section" @keydown.esc="onEscape">
       <div class="sheet-section-head">
-        <span class="sheet-label">Board tags</span>
+        <span class="sheet-label">{{ t("settings.tags.sectionLabel") }}</span>
         <span class="sheet-count">{{ tags.length }} / {{ MAX_TAGS }}</span>
       </div>
 
-      <div v-if="tags.length === 0" class="sheet-empty">No tags yet — add the first one below.</div>
+      <div v-if="tags.length === 0" class="sheet-empty">{{ t("settings.tags.empty") }}</div>
 
       <div v-else class="sheet-list">
         <div
@@ -133,11 +146,11 @@ function onEscape(e: KeyboardEvent) {
           :class="{ 'is-confirming': confirmDeleteId === tag.id }"
         >
           <div v-if="confirmDeleteId === tag.id" class="sheet-confirm">
-            <span>Delete “{{ tag.name }}”? It's removed from all cards.</span>
+            <span>{{ t("settings.tags.deleteConfirm", { name: tag.name }) }}</span>
             <button v-focus type="button" class="go" :disabled="deletingTagId === tag.id" @click="removeTag(tag)">
-              {{ deletingTagId === tag.id ? "Deleting..." : "Delete" }}
+              {{ deletingTagId === tag.id ? t("settings.tags.deleting") : t("common.delete") }}
             </button>
-            <button type="button" class="no" @click="confirmDeleteId = null">Cancel</button>
+            <button type="button" class="no" @click="confirmDeleteId = null">{{ t("common.cancel") }}</button>
           </div>
           <template v-else>
             <span class="tag-glyph" aria-hidden="true">
@@ -151,7 +164,7 @@ function onEscape(e: KeyboardEvent) {
               type="text"
               maxlength="50"
               class="sheet-inline-input"
-              :aria-label="`Rename tag ${tag.name}`"
+              :aria-label="t('settings.tags.renameAria', { name: tag.name })"
               :disabled="renamingId === tag.id"
               @input="draftNames[tag.id] = ($event.target as HTMLInputElement).value"
               @blur="commitRename(tag)"
@@ -161,8 +174,8 @@ function onEscape(e: KeyboardEvent) {
             <button
               class="sheet-icon-btn danger"
               type="button"
-              title="Delete tag"
-              :aria-label="`Delete tag ${tag.name}`"
+              :title="t('settings.tags.deleteTag')"
+              :aria-label="t('settings.tags.deleteAria', { name: tag.name })"
               @click="confirmDeleteId = tag.id"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -179,22 +192,22 @@ function onEscape(e: KeyboardEvent) {
           type="text"
           maxlength="50"
           class="sheet-input"
-          placeholder="New tag name"
-          aria-label="New tag name"
+          :placeholder="t('settings.tags.newName')"
+          :aria-label="t('settings.tags.newName')"
           @keydown.enter.prevent="addTag"
         />
         <button class="btn secondary" type="button" :disabled="creatingTag" @click="addTag">
-          {{ creatingTag ? "Adding..." : "Add" }}
+          {{ creatingTag ? t("settings.tags.adding") : t("common.add") }}
         </button>
       </div>
-      <p v-else class="sheet-note">Tag limit reached ({{ MAX_TAGS }}).</p>
-      <p v-if="tags.length" class="sheet-note">Click a name to rename it · Enter saves, Esc reverts.</p>
+      <p v-else class="sheet-note">{{ t("settings.tags.limitReached", { max: MAX_TAGS }) }}</p>
+      <p v-if="tags.length" class="sheet-note">{{ t("settings.tags.hintNote") }}</p>
     </section>
 
     <p v-if="error" class="sheet-error">{{ error }}</p>
 
     <template #footer>
-      <button class="btn" type="button" @click="emit('close')">Done</button>
+      <button class="btn" type="button" @click="emit('close')">{{ t("common.done") }}</button>
     </template>
   </ModalShell>
 </template>

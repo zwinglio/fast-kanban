@@ -1,4 +1,6 @@
 import { getEditKey } from "./lib/editKey";
+import { i18n } from "./i18n";
+import type { Locale } from "./lib/locale";
 
 export interface Tag {
   id: number;
@@ -57,9 +59,30 @@ export interface Dependency {
 }
 
 class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    /** Stable server error code (see server/errors.ts), translated by apiErrorMessage(). */
+    public code?: string,
+    /** Interpolation values carried by the server, e.g. { max: 255 }. */
+    public params?: Record<string, string | number>
+  ) {
     super(message);
   }
+}
+
+/**
+ * User-facing text for an API error: the localised message for the server's
+ * error code when we know it, else the server's English message.
+ */
+export function apiErrorMessage(e: unknown): string {
+  if (e instanceof ApiError && e.code) {
+    const key = `errors.${e.code}`;
+    if (i18n.global.te(key)) {
+      return i18n.global.t(key, (e.params ?? {}) as Record<string, string | number>);
+    }
+  }
+  return e instanceof Error ? e.message : String(e);
 }
 
 // Identifies this tab on writes, so live updates it caused itself can be ignored.
@@ -84,15 +107,26 @@ async function request<T>(
   const res = await fetch(`/api${path}`, { ...options, headers });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`);
+    throw new ApiError(
+      res.status,
+      data?.error ?? `Request failed (${res.status})`,
+      data?.code,
+      data?.params
+    );
   }
   return data as T;
 }
 
-export function createBoard(title: string, prefix: string, startAt?: number) {
+export function createBoard(title: string, prefix: string, startAt?: number, locale?: Locale) {
   return request<{ id: string; editKey: string }>("/boards", {
     method: "POST",
-    body: JSON.stringify({ title, prefix, ...(startAt !== undefined ? { startAt } : {}) }),
+    body: JSON.stringify({
+      title,
+      prefix,
+      ...(startAt !== undefined ? { startAt } : {}),
+      // Seeds the default column/priority names in the creator's language.
+      ...(locale ? { locale } : {}),
+    }),
   });
 }
 
